@@ -69,6 +69,36 @@ async function scrapeMann(page) {
  */
 async function scrapeFleetguard(page) {
   const result = { Specification: [], OENumbers: [], Vehicles: [] };
+
+  // 1. Önce Sayfa Yüklendiğinde Görünür Olan Specs Verilerini Al
+  result.Specification = await page.evaluate(() => {
+    const specs = [];
+    const translateMap = { "Media Type": "Filtre Medya Türü", "Gasket OD": "Conta Dış Çapı", "Largest OD": "En Büyük Dış Çap", "Inside Diameter": "İç Çap", "Outside Diameter": "Dış Çap", "Rated Flow": "Nominal Debi", "Length": "Uzunluk" };
+    
+    function findRoots(node) {
+      let roots = [node];
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT);
+      while (walker.nextNode()) {
+        const el = walker.currentNode;
+        if (el.shadowRoot) roots = roots.concat(findRoots(el.shadowRoot));
+      }
+      return [...new Set(roots)];
+    }
+
+    findRoots(document).forEach(root => {
+      root.querySelectorAll(".table1, .table2, .product-specs-table").forEach(table => {
+        table.querySelectorAll("tr").forEach(row => {
+          const c = row.querySelectorAll("td");
+          if (c.length >= 2) {
+            specs.push({ key: translateMap[c[0].innerText.trim()] || c[0].innerText.trim(), value: c[1].innerText.trim() });
+          }
+        });
+      });
+    });
+    return specs;
+  });
+
+  // 2. OEM (Cross Reference) Sekmesine Tıkla ve Veriyi Al
   await page.evaluate(async () => {
     function findRoots(node) {
       let roots = [node];
@@ -81,14 +111,20 @@ async function scrapeFleetguard(page) {
     }
     const allRoots = findRoots(document);
     const allBtns = allRoots.flatMap(r => Array.from(r.querySelectorAll('button, a, span, li')));
-    const oemBtn = allBtns.find(el => el.innerText.toLowerCase().includes('cross reference'));
+    // Data-name="CrossRef" veya metin içeren butonu bul
+    const oemBtn = allBtns.find(el => 
+      (el.getAttribute && el.getAttribute('data-name') === 'CrossRef') || 
+      el.innerText.toLowerCase().includes('cross reference')
+    );
     if (oemBtn) oemBtn.click();
-    await new Promise(r => setTimeout(r, 2000));
-    const eqBtn = allBtns.find(el => el.innerText.toLowerCase().includes('equipment'));
-    if (eqBtn) eqBtn.click();
-    await new Promise(r => setTimeout(r, 2000));
   });
-  const data = await page.evaluate(() => {
+  
+  await page.waitForTimeout(2000);
+
+  result.OENumbers = await page.evaluate(() => {
+    const oems = [];
+    const skipList = ["uses service part", "service part", "replaces"];
+
     function findRoots(node) {
       let roots = [node];
       const walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT);
@@ -98,38 +134,92 @@ async function scrapeFleetguard(page) {
       }
       return [...new Set(roots)];
     }
-    const roots = findRoots(document);
-    const results = { specs: [], oems: [], equipment: [] };
-    const translateMap = { "Media Type": "Filtre Medya Türü", "Gasket OD": "Conta Dış Çapı", "Largest OD": "En Büyük Dış Çap", "Inside Diameter": "İç Çap", "Outside Diameter": "Dış Çap", "Rated Flow": "Nominal Debi", "Length": "Uzunluk" };
-    roots.forEach(root => {
-      root.querySelectorAll(".table1, .table2, .product-specs-table").forEach(table => {
-        table.querySelectorAll("tr").forEach(row => {
-          const c = row.querySelectorAll("td");
-          if (c.length >= 2) results.specs.push({ key: translateMap[c[0].innerText.trim()] || c[0].innerText.trim(), value: c[1].innerText.trim() });
+
+    findRoots(document).forEach(root => {
+      // Sadece .tabcontent.oem içindekilere odaklan
+      const oemContainer = root.querySelector(".tabcontent.oem");
+      if (oemContainer) {
+        oemContainer.querySelectorAll(".Related_Parts_Class").forEach(block => {
+          const brandEl = block.querySelector(".parts");
+          const partsEls = block.querySelectorAll(".Parts_Grid .parts");
+          if (brandEl && partsEls.length) {
+            const brandName = brandEl.innerText.trim();
+            if (skipList.includes(brandName.toLowerCase())) return;
+
+            const partNumbers = Array.from(partsEls)
+              .map(p => p.innerText.trim() || p.getAttribute("data-item") || "")
+              .filter(v => v);
+
+            if (partNumbers.length) {
+              oems.push({ "Üretici Adı": brandName, "Oems": [...new Set(partNumbers)] });
+            }
+          }
         });
-      });
-      root.querySelectorAll(".Related_Parts_Class").forEach(block => {
-        const brandEl = block.querySelector(":scope > .parts");
-        const partsEls = block.querySelectorAll(".Parts_Grid .parts span");
-        if (brandEl && partsEls.length) results.oems.push({ "Üretici Adı": brandEl.innerText.trim(), "Oems": Array.from(partsEls).map(p => p.innerText.trim()).filter(v => v) });
-      });
+      }
+    });
+    return oems;
+  });
+
+  // 3. Equipment Sekmesine Tıkla ve Veriyi Al
+  await page.evaluate(async () => {
+    function findRoots(node) {
+      let roots = [node];
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT);
+      while (walker.nextNode()) {
+        const el = walker.currentNode;
+        if (el.shadowRoot) roots = roots.concat(findRoots(el.shadowRoot));
+      }
+      return [...new Set(roots)];
+    }
+    const allRoots = findRoots(document);
+    const allBtns = allRoots.flatMap(r => Array.from(r.querySelectorAll('button, a, span, li')));
+    const eqBtn = allBtns.find(el => 
+      (el.getAttribute && el.getAttribute('data-name') === 'Equipment') || 
+      el.innerText.toLowerCase().includes('equipment')
+    );
+    if (eqBtn) eqBtn.click();
+  });
+
+  await page.waitForTimeout(2000);
+
+  result.Vehicles = await page.evaluate(() => {
+    const equipment = [];
+    function findRoots(node) {
+      let roots = [node];
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT);
+      while (walker.nextNode()) {
+        const el = walker.currentNode;
+        if (el.shadowRoot) roots = roots.concat(findRoots(el.shadowRoot));
+      }
+      return [...new Set(roots)];
+    }
+
+    findRoots(document).forEach(root => {
       root.querySelectorAll("table").forEach(table => {
         if (table.innerText.includes("Equipment") && table.innerText.includes("Engine")) {
           table.querySelectorAll("tbody tr").forEach(row => {
             const c = row.querySelectorAll("td");
             if (c.length >= 1) {
               const txt = c[0]?.innerText.trim() || "";
-              results.equipment.push({ "Üretici": txt.split(' - ')[0] || "", "Model": txt.split(' - ')[1] || txt, "Model Tipi": "", "Filtre Tipi": "", "Motor Kodu": c[1]?.innerText.trim() || "", "ccm": "", "kW": "", "HP": "", "Üretim yılı": c[2]?.innerText.trim() || "" });
+              equipment.push({ 
+                "Üretici": txt.split(' - ')[0] || "", 
+                "Model": txt.split(' - ')[1] || txt, 
+                "Model Tipi": "", 
+                "Filtre Tipi": "", 
+                "Motor Kodu": c[1]?.innerText.trim() || "", 
+                "ccm": "", 
+                "kW": "", 
+                "HP": "", 
+                "Üretim yılı": c[2]?.innerText.trim() || "" 
+              });
             }
           });
         }
       });
     });
-    return results;
+    return equipment;
   });
-  result.Specification = data.specs;
-  result.OENumbers = data.oems;
-  result.Vehicles = data.equipment;
+
   return result;
 }
 
