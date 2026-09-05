@@ -1,7 +1,7 @@
 {
   "name": "webmcpscape",
   "version": "1.0.0",
-  "description": "",
+  "description": "Belirli sitelerin çeşitli verilerini kazıma yapar ve UI tarafına aktarır",
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
@@ -16,8 +16,10 @@
   "type": "commonjs",
   "dependencies": {
     "@playwright/mcp": "^0.0.70",
+    "cheerio": "^1.2.0",
     "cors": "^2.8.6",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "playwright": "^1.63.0"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
