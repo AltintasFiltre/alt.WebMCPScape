@@ -22,10 +22,15 @@ export function CrossResultsView({ queryCode, searchResponse }) {
     searchResponse.totalOems ||
     results.reduce((acc, curr) => acc + (curr.Oems?.length || 0), 0);
 
-  // Tüm OEM kodlarını tekilleştirip temizleyen liste
+  // Tüm OEM kodlarının içindeki tüm boşlukları kaldırıp tekilleştiren liste
   const getAllUniqueOems = () => {
     const allOems = results.flatMap((item) => item.Oems || []);
-    const uniqueClean = [...new Set(allOems.map((oem) => String(oem).trim()).filter(Boolean))];
+    // Her string'in İÇİNDEKİ TÜM BOŞLUKLARI sil (örn: "WP 12 120/1" -> "WP12120/1")
+    const noSpacesList = allOems
+      .map((oem) => String(oem).replace(/\s+/g, ''))
+      .filter(Boolean);
+    // Tekilleştir (duplicate olmasın)
+    const uniqueClean = [...new Set(noSpacesList)];
     return uniqueClean;
   };
 
