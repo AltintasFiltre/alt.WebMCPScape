@@ -77,6 +77,55 @@ export const ApiService = {
   },
 
   /**
+   * Çift Referans Doğrulama (A ⟷ B) Canlı SSE Akışı
+   */
+  async searchDualCrossReferencesStream(codeA, codeB, forceRefresh = false, onProgress = null) {
+    if (!codeA || !codeB) {
+      throw new Error('Her iki referans kodu da gereklidir.');
+    }
+    const baseUrl = getBaseUrl();
+    const url = `${baseUrl}/api/cross-search-dual-stream?codeA=${encodeURIComponent(codeA.trim())}&codeB=${encodeURIComponent(codeB.trim())}${forceRefresh ? '&refresh=true' : ''}`;
+
+    return new Promise((resolve, reject) => {
+      const eventSource = new EventSource(url);
+      let finalResult = null;
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.type === 'complete') {
+            finalResult = data.data;
+            if (typeof onProgress === 'function') {
+              onProgress(data);
+            }
+            eventSource.close();
+            resolve(finalResult);
+          } else if (data.type === 'error') {
+            eventSource.close();
+            reject(new Error(data.error || 'Çift referans doğrulama sırasında hata oluştu.'));
+          } else {
+            if (typeof onProgress === 'function') {
+              onProgress(data);
+            }
+          }
+        } catch (err) {
+          console.error('Dual SSE parse error:', err);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        eventSource.close();
+        if (finalResult) {
+          resolve(finalResult);
+        } else {
+          reject(new Error('Çift referans akış bağlantısı kesildi.'));
+        }
+      };
+    });
+  },
+
+  /**
    * Sadece TEK BİR üretici / katalog scraper'ını çalıştırır
    */
   async searchSingleProvider(code, scraperName) {

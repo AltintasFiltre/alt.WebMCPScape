@@ -143,6 +143,81 @@ app.get('/api/cross-search-single', async (req, res) => {
 });
 
 const { ImageSearchService } = require('./src/services/ImageSearchService');
+const { DualCrossVerificationService } = require('./src/services/DualCrossVerificationService');
+
+// API endpoint: Çift Referans Doğrulama SSE Akışı (A ⟷ B Canlı Kesişim Taraması)
+app.get('/api/cross-search-dual-stream', async (req, res) => {
+  const { codeA, codeB, refresh } = req.query;
+
+  if (!codeA || !codeB) {
+    return res.status(400).json({ error: 'Her iki referans kodu (codeA ve codeB) gereklidir.' });
+  }
+
+  const forceRefresh = refresh === 'true' || refresh === '1';
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const sendEvent = (data) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    sendEvent({
+      type: 'start',
+      queryCode: `${codeA} ⟷ ${codeB}`,
+      totalScrapers: 12,
+      isDual: true
+    });
+
+    // 1. Ref A için veri (Önbellek veya Canlı)
+    let resA = null;
+    if (!forceRefresh) {
+      resA = StorageService.getCrossReference(codeA);
+    }
+    if (!resA) {
+      resA = await crossReferenceService.search(codeA, (ev) => {
+        sendEvent({ ...ev, prefix: `Ref A (${codeA})` });
+      });
+      if (resA?.results) StorageService.saveCrossReference(codeA, resA);
+    }
+
+    // 2. Ref B için veri (Önbellek veya Canlı)
+    let resB = null;
+    if (!forceRefresh) {
+      resB = StorageService.getCrossReference(codeB);
+    }
+    if (!resB) {
+      resB = await crossReferenceService.search(codeB, (ev) => {
+        sendEvent({ ...ev, prefix: `Ref B (${codeB})` });
+      });
+      if (resB?.results) StorageService.saveCrossReference(codeB, resB);
+    }
+
+    // 3. Kesişim ve Çift Yönlü Doğrulama Analizi
+    const dualAnalysis = DualCrossVerificationService.analyze(codeA, resA, codeB, resB);
+
+    // 4. Diske kaydet
+    const dualKey = `${codeA} + ${codeB}`;
+    StorageService.saveCrossReference(dualKey, dualAnalysis);
+
+    sendEvent({
+      type: 'complete',
+      data: dualAnalysis
+    });
+
+    res.end();
+  } catch (error) {
+    console.error('Dual cross-search stream error:', error);
+    sendEvent({
+      type: 'error',
+      error: error.message || 'Çift referans doğrulama sırasında bir hata oluştu.'
+    });
+    res.end();
+  }
+});
 
 // API endpoint for fetching OEM product images
 app.get('/api/images', async (req, res) => {

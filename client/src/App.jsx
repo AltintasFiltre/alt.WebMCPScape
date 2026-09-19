@@ -18,7 +18,9 @@ import { ScrapingProgressBar } from './components/ScrapingProgressBar';
  */
 function App() {
   const [mode, setMode] = useState('cross'); // 'cross' | 'url'
+  const [crossType, setCrossType] = useState('single'); // 'single' | 'dual'
   const [inputVal, setInputVal] = useState('');
+  const [inputValB, setInputValB] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingSource, setLoadingSource] = useState(null); // Tekil tekrar taranan üretici adı
   const [error, setError] = useState(null);
@@ -47,6 +49,7 @@ function App() {
     setMode(newMode);
     setError(null);
     setInputVal('');
+    setInputValB('');
   };
 
   // Geçmişten seçim yapma (Önbellekteki veriyi anında getirir)
@@ -54,7 +57,19 @@ function App() {
     setError(null);
     if (entry.type === 'cross') {
       setMode('cross');
-      setInputVal(entry.title);
+
+      // Çift referans kaydı mı? (örn: "W 712 ⟷ LF16015" veya "W 712 + LF16015")
+      if (entry.title.includes('⟷') || entry.title.includes('+')) {
+        const parts = entry.title.split(/⟷|\+/).map((s) => s.trim());
+        setCrossType('dual');
+        setInputVal(parts[0] || '');
+        setInputValB(parts[1] || '');
+      } else {
+        setCrossType('single');
+        setInputVal(entry.title);
+        setInputValB('');
+      }
+
       setCurrentCrossCode(entry.title);
 
       if (entry.data) {
@@ -105,75 +120,129 @@ function App() {
     if (e && e.preventDefault) e.preventDefault();
     if (!inputVal.trim()) return;
 
+    if (mode === 'cross' && crossType === 'dual' && !inputValB.trim()) {
+      setError('Çift referans doğrulama için 2. referans kodunu (Ref B) girmelisiniz.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
       if (mode === 'cross') {
         setCrossResults(null);
-        setCurrentCrossCode(inputVal.trim());
 
-        // Canlı ilerleme state'ini başlat
-        setProgressState({
-          active: true,
-          totalScrapers: 12,
-          completedCount: 0,
-          currentScraper: 'Katalog bağlantıları kuruluyor...',
-          sources: {}
-        });
+        if (crossType === 'dual') {
+          // Çift Referans Doğrulama & Kesişim Arama Akışı
+          const codeA = inputVal.trim();
+          const codeB = inputValB.trim();
+          const dualTitle = `${codeA} ⟷ ${codeB}`;
+          setCurrentCrossCode(dualTitle);
 
-        const data = await ApiService.searchCrossReferencesStream(
-          inputVal.trim(),
-          forceRefresh,
-          (event) => {
-            if (event.type === 'start') {
-              const initialSources = {};
-              (event.scrapers || []).forEach((s) => {
-                initialSources[s.name] = {
-                  name: s.name,
-                  type: s.type,
-                  status: 'pending',
-                  foundCount: 0
-                };
-              });
-              setProgressState((prev) => ({
-                ...prev,
-                totalScrapers: event.totalScrapers || 11,
-                sources: initialSources
-              }));
-            } else if (event.type === 'scraper_start') {
-              setProgressState((prev) => ({
-                ...prev,
-                currentScraper: event.name,
-                sources: {
-                  ...prev.sources,
-                  [event.name]: {
-                    ...(prev.sources[event.name] || { name: event.name }),
-                    status: 'running'
+          setProgressState({
+            active: true,
+            totalScrapers: 12,
+            completedCount: 0,
+            currentScraper: 'Her iki kod için kataloglar taranıyor...',
+            sources: {}
+          });
+
+          const data = await ApiService.searchDualCrossReferencesStream(
+            codeA,
+            codeB,
+            forceRefresh,
+            (event) => {
+              if (event.type === 'start') {
+                setProgressState((prev) => ({
+                  ...prev,
+                  totalScrapers: event.totalScrapers || 12
+                }));
+              } else if (event.type === 'scraper_start') {
+                setProgressState((prev) => ({
+                  ...prev,
+                  currentScraper: `${event.prefix || ''} - ${event.name}`
+                }));
+              } else if (event.type === 'scraper_done') {
+                const rep = event.report;
+                setProgressState((prev) => ({
+                  ...prev,
+                  completedCount: event.completedCount,
+                  sources: {
+                    ...prev.sources,
+                    [rep.name]: rep
                   }
-                }
-              }));
-            } else if (event.type === 'scraper_done') {
-              const rep = event.report;
-              setProgressState((prev) => ({
-                ...prev,
-                completedCount: event.completedCount,
-                sources: {
-                  ...prev.sources,
-                  [rep.name]: rep
-                }
-              }));
-            } else if (event.type === 'complete') {
-              setProgressState((prev) => ({
-                ...prev,
-                active: false
-              }));
+                }));
+              }
             }
-          }
-        );
+          );
 
-        setCrossResults(data);
-        saveToHistory('cross', inputVal.trim(), data);
+          setCrossResults(data);
+          saveToHistory('cross', dualTitle, data);
+        } else {
+          // Tekil Referans Arama Akışı
+          setCurrentCrossCode(inputVal.trim());
+
+          setProgressState({
+            active: true,
+            totalScrapers: 12,
+            completedCount: 0,
+            currentScraper: 'Katalog bağlantıları kuruluyor...',
+            sources: {}
+          });
+
+          const data = await ApiService.searchCrossReferencesStream(
+            inputVal.trim(),
+            forceRefresh,
+            (event) => {
+              if (event.type === 'start') {
+                const initialSources = {};
+                (event.scrapers || []).forEach((s) => {
+                  initialSources[s.name] = {
+                    name: s.name,
+                    type: s.type,
+                    status: 'pending',
+                    foundCount: 0
+                  };
+                });
+                setProgressState((prev) => ({
+                  ...prev,
+                  totalScrapers: event.totalScrapers || 12,
+                  sources: initialSources
+                }));
+              } else if (event.type === 'scraper_start') {
+                setProgressState((prev) => ({
+                  ...prev,
+                  currentScraper: event.name,
+                  sources: {
+                    ...prev.sources,
+                    [event.name]: {
+                      ...(prev.sources[event.name] || { name: event.name }),
+                      status: 'running'
+                    }
+                  }
+                }));
+              } else if (event.type === 'scraper_done') {
+                const rep = event.report;
+                setProgressState((prev) => ({
+                  ...prev,
+                  completedCount: event.completedCount,
+                  sources: {
+                    ...prev.sources,
+                    [rep.name]: rep
+                  }
+                }));
+              } else if (event.type === 'complete') {
+                setProgressState((prev) => ({
+                  ...prev,
+                  active: false
+                }));
+              }
+            }
+          );
+
+          setCrossResults(data);
+          saveToHistory('cross', inputVal.trim(), data);
+        }
       } else {
         setScrapeData(null);
         const data = await ApiService.scrapeUrl(inputVal.trim(), forceRefresh);
@@ -208,8 +277,12 @@ function App() {
           {/* Search Form Input */}
           <SearchForm
             mode={mode}
+            crossType={crossType}
+            onCrossTypeChange={setCrossType}
             value={inputVal}
             onChange={setInputVal}
+            valueB={inputValB}
+            onChangeB={setInputValB}
             onSubmit={handleSubmit}
             loading={loading}
             history={history}

@@ -31,13 +31,14 @@ function normalizeCode(s) {
  * her bir OEM koduna teyit eden kaynak sayısına göre Güven/Doğruluk Skoru hesaplar
  * ve detaylı karşılaştırma matrisi tablosu sunar.
  */
-export function CrossComparisonMatrix({ searchResponse, queryCode }) {
+export function CrossComparisonMatrix({ searchResponse, queryCode, dualFilter = 'ALL' }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('ALL');
   const [filterLevel, setFilterLevel] = useState('ALL'); // 'ALL' | 'HIGH' (>=2 sources)
   const [sortBy, setSortBy] = useState('score_desc'); // 'score_desc' | 'score_asc' | 'oem_asc' | 'brand_asc'
   const [copiedHighCsv, setCopiedHighCsv] = useState(false);
 
+  const isDual = searchResponse?.isDual === true;
   const results = !searchResponse
     ? []
     : Array.isArray(searchResponse)
@@ -70,6 +71,10 @@ export function CrossComparisonMatrix({ searchResponse, queryCode }) {
 
   // Tüm OEM kodlarını tekil satırlara dönüştür ve puanla
   const matrixRows = useMemo(() => {
+    if (isDual && Array.isArray(searchResponse.matrixRows)) {
+      return searchResponse.matrixRows;
+    }
+
     const rows = [];
 
     results.forEach((brandItem) => {
@@ -78,14 +83,10 @@ export function CrossComparisonMatrix({ searchResponse, queryCode }) {
 
       oems.forEach((oem) => {
         const normOem = normalizeCode(oem);
-        const normQuery = normalizeCode(queryCode);
 
-        // Hangi kaynaklar bu kodu buldu veya aranan kod bu kaynak tarafından bulundu mu?
         const confirmedSources = [];
         sources.forEach((src) => {
           const codeSet = sourceCodeMaps.get(src.name);
-          // 1. Kaynağın döndürdüğü OEM listesinde var mı?
-          // 2. Veya bu kaynak aranan kod için doğrudan sonuç verdi ve bu üretici markası o kaynağın kendisi mi?
           const isDirectHit = codeSet && codeSet.has(normOem);
           const isSourceBrand =
             src.name.toUpperCase().includes(brand.toUpperCase()) ||
@@ -98,13 +99,8 @@ export function CrossComparisonMatrix({ searchResponse, queryCode }) {
           }
         });
 
-        // En az 1 teyit (kendi bulunduğu katalog)
         const matchCount = Math.max(confirmedSources.length, 1);
 
-        // Puanlama Algoritması:
-        // 1 kaynak: 55 Puan (1 Yıldız)
-        // 2 kaynak: 85 Puan (2 Yıldız)
-        // 3+ kaynak: 100 Puan (3 Yıldız / Tam Konsensüs)
         let score = 55;
         let stars = 1;
         let level = 'Tek Kaynak Teyitli';
@@ -137,11 +133,22 @@ export function CrossComparisonMatrix({ searchResponse, queryCode }) {
     });
 
     return rows;
-  }, [results, sources, sourceCodeMaps, queryCode]);
+  }, [results, sources, sourceCodeMaps, isDual, searchResponse]);
 
   // Filtreleme ve Sıralama
   const filteredAndSortedRows = useMemo(() => {
     let list = [...matrixRows];
+
+    // Çift Referans Kesişim Filtresi
+    if (isDual && dualFilter !== 'ALL') {
+      if (dualFilter === 'MUTUAL') {
+        list = list.filter((r) => r.isMutual);
+      } else if (dualFilter === 'ONLY_A') {
+        list = list.filter((r) => r.inA && !r.inB);
+      } else if (dualFilter === 'ONLY_B') {
+        list = list.filter((r) => r.inB && !r.inA);
+      }
+    }
 
     // Metin araması
     if (searchTerm.trim()) {
@@ -161,7 +168,7 @@ export function CrossComparisonMatrix({ searchResponse, queryCode }) {
 
     // Seviye filtresi
     if (filterLevel === 'HIGH') {
-      list = list.filter((r) => r.matchCount >= 2);
+      list = list.filter((r) => r.matchCount >= 2 || r.isMutual);
     }
 
     // Sıralama
@@ -174,7 +181,7 @@ export function CrossComparisonMatrix({ searchResponse, queryCode }) {
     });
 
     return list;
-  }, [matrixRows, searchTerm, selectedBrand, filterLevel, sortBy]);
+  }, [matrixRows, isDual, dualFilter, searchTerm, selectedBrand, filterLevel, sortBy]);
 
   // İstatistiksel Metrikler
   const totalRows = matrixRows.length;
@@ -345,6 +352,17 @@ export function CrossComparisonMatrix({ searchResponse, queryCode }) {
               <tr className="bg-slate-50/90 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-600">
                 <th className="py-3 px-4 min-w-[140px]">Üretici</th>
                 <th className="py-3 px-4 min-w-[160px]">OEM Filtre Kodu</th>
+                {/* Çift referans modunda A ve B teyit sütunları */}
+                {isDual && (
+                  <>
+                    <th className="py-3 px-3 text-center min-w-[100px] border-l border-blue-200/60 text-blue-700 bg-blue-50/40">
+                      Ref A ({searchResponse.codeA})
+                    </th>
+                    <th className="py-3 px-3 text-center min-w-[100px] border-l border-indigo-200/60 text-indigo-700 bg-indigo-50/40">
+                      Ref B ({searchResponse.codeB})
+                    </th>
+                  </>
+                )}
                 {/* Taranan her aktif katalog için bir sütun */}
                 {activeSources.map((src, sIdx) => (
                   <th
@@ -369,7 +387,7 @@ export function CrossComparisonMatrix({ searchResponse, queryCode }) {
               {filteredAndSortedRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={4 + activeSources.length}
+                    colSpan={4 + activeSources.length + (isDual ? 2 : 0)}
                     className="p-8 text-center text-slate-400 font-sans text-sm"
                   >
                     Filtre kriterlerine uygun muadil bulunamadı.
@@ -394,8 +412,37 @@ export function CrossComparisonMatrix({ searchResponse, queryCode }) {
                             {row.oem}
                           </span>
                         </OemImagePreviewPopover>
+                        {row.isMutual && (
+                          <span className="text-[10px] font-sans font-extrabold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            Ortak ✓
+                          </span>
+                        )}
                       </div>
                     </td>
+
+                    {/* Çift Referans Teyit Hücreleri */}
+                    {isDual && (
+                      <>
+                        <td className="py-3 px-3 text-center border-l border-blue-100/60 bg-blue-50/20">
+                          {row.inA ? (
+                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 font-bold text-xs">
+                              ✓
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 font-sans">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-center border-l border-indigo-100/60 bg-indigo-50/20">
+                          {row.inB ? (
+                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs">
+                              ✓
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 font-sans">—</span>
+                          )}
+                        </td>
+                      </>
+                    )}
 
                     {/* Katalog Sütunları (Onay / Tire) */}
                     {activeSources.map((src, sIdx) => {

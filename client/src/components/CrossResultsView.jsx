@@ -9,11 +9,13 @@ import {
   Star,
   HardDrive,
   RefreshCw,
-  Clock
+  Clock,
+  ArrowRightLeft
 } from 'lucide-react';
 import { SourceStatusBanner } from './SourceStatusBanner';
 import { CrossComparisonMatrix } from './CrossComparisonMatrix';
 import { OemImagePreviewPopover } from './OemImagePreviewPopover';
+import { DualVerificationBanner } from './DualVerificationBanner';
 
 /**
  * Normalizasyon yardımcısı
@@ -27,7 +29,7 @@ function normalizeCode(s) {
 /**
  * CrossResultsView Component
  * (Single Responsibility: Çapraz arama sonuçlarını, kaynak raporlama bannerını,
- * kart görünümü ve karşılaştırma/puanlama matrisi sekmelerini sunar)
+ * çift referans doğrulama analizini, kart görünümü ve karşılaştırma/puanlama matrisi sekmelerini sunar)
  */
 export function CrossResultsView({
   queryCode,
@@ -38,6 +40,7 @@ export function CrossResultsView({
   loadingSource
 }) {
   const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'matrix'
+  const [dualFilter, setDualFilter] = useState('ALL'); // 'ALL' | 'MUTUAL' | 'ONLY_A' | 'ONLY_B'
   const [copiedJson, setCopiedJson] = useState(false);
   const [copiedCsv, setCopiedCsv] = useState(false);
 
@@ -167,26 +170,44 @@ export function CrossResultsView({
         </div>
       )}
 
+      {/* Çift Referans Doğrulama & Kesişim Raporu Banner'ı */}
+      {searchResponse?.isDual && (
+        <DualVerificationBanner
+          dualData={searchResponse}
+          activeFilter={dualFilter}
+          onFilterChange={setDualFilter}
+        />
+      )}
+
       {/* Üst Başlık, Görünüm Değiştirici ve Kopyalama Butonları */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-slate-800">
-              "{queryCode}" İçin Bulunan Muadiller ({results.length} Üretici)
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              {searchResponse?.isDual ? (
+                <>
+                  <ArrowRightLeft className="w-5 h-5 text-blue-600" />
+                  <span>"{searchResponse.codeA}" ⟷ "{searchResponse.codeB}" Çift Doğrulama Sonuçları</span>
+                </>
+              ) : (
+                <span>"{queryCode}" İçin Bulunan Muadiller ({results.length} Üretici)</span>
+              )}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Toplam {uniqueOems.length} tekil muadil kod bulundu
+              {searchResponse?.isDual
+                ? `${totalBrands} üretici markada toplam ${totalOems} muadil kesiştirildi.`
+                : `${totalBrands} üretici markada toplam ${totalOems} muadil parça kodu listeleniyor.`}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Görünüm Değiştirici (Cards vs Matrix) */}
-            <div className="flex items-center bg-slate-200/70 p-1 rounded-xl border border-slate-200">
+            {/* Görünüm Değiştirme Butonları */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
               <button
                 onClick={() => setViewMode('cards')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   viewMode === 'cards'
-                    ? 'bg-white text-slate-800 shadow-xs'
+                    ? 'bg-white text-blue-600 shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -197,41 +218,40 @@ export function CrossResultsView({
                 onClick={() => setViewMode('matrix')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   viewMode === 'matrix'
-                    ? 'bg-white text-blue-700 shadow-xs'
+                    ? 'bg-white text-blue-600 shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <Table className="w-3.5 h-3.5" />
-                Karşılaştırma & Puanlama
+                Karşılaştırma & Puan Matrisi
               </button>
             </div>
 
-            {/* CSV Kopyala Butonu */}
+            {/* CSV ve JSON Dışa Aktarma Butonları */}
             <button
               onClick={handleCopyCsv}
-              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl transition-all text-xs font-bold shadow-xs"
-              title="Tüm OEM kodlarını aralarında virgül olan tekil CSV formatında kopyala"
+              className="flex items-center gap-1 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold transition-all shadow-2xs"
+              title="Tüm boşluksuz OEM kodlarını tek satır CSV olarak kopyalar"
             >
               {copiedCsv ? (
-                <span className="text-emerald-700 flex items-center gap-1.5">
-                  <Check className="w-3.5 h-3.5" /> CSV Kopyalandı!
-                </span>
+                <>
+                  <Check className="w-3.5 h-3.5" /> Kopyalandı!
+                </>
               ) : (
                 <>
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> OEM CSV
+                  <FileSpreadsheet className="w-3.5 h-3.5" /> CSV Kopyala
                 </>
               )}
             </button>
 
-            {/* JSON Kopyala Butonu */}
             <button
               onClick={handleCopyJson}
-              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl transition-all text-xs font-bold shadow-xs"
+              className="flex items-center gap-1 px-3 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-2xs"
             >
               {copiedJson ? (
-                <span className="text-green-600 flex items-center gap-1.5">
-                  <Check className="w-3.5 h-3.5" /> JSON Kopyalandı!
-                </span>
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-600" /> Kopyalandı!
+                </>
               ) : (
                 <>
                   <Copy className="w-3.5 h-3.5 text-slate-500" /> JSON
@@ -260,7 +280,11 @@ export function CrossResultsView({
 
         {/* 1. SEÇENEK: Karşılaştırma & Puanlama Matrisi Görünümü */}
         {viewMode === 'matrix' && (
-          <CrossComparisonMatrix searchResponse={searchResponse} queryCode={queryCode} />
+          <CrossComparisonMatrix
+            searchResponse={searchResponse}
+            queryCode={queryCode}
+            dualFilter={dualFilter}
+          />
         )}
 
         {/* 2. SEÇENEK: Klasik Kart Görünümü (Puanlama Rozetleri İle Geliştirilmiş) */}
