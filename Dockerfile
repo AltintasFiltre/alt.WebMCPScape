@@ -29,5 +29,9 @@ RUN npx playwright install chromium
 # Uygulama portları (Backend: 4002)
 EXPOSE 4002
 
+# Kalıcı JSON verileri için volume tanımı
+RUN mkdir -p /app/data
+VOLUME ["/app/data"]
+
 # Uygulamayı başlat
 CMD ["node", "server.js"]

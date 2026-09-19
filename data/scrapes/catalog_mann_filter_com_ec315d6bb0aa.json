@@ -1,0 +1,25 @@
+{
+  "Specification": [
+    {
+      "key": "A",
+      "value": "100"
+    }
+  ],
+  "OENumbers": [
+    {
+      "Üretici Adı": "MANN",
+      "Oems": [
+        "W 712"
+      ]
+    }
+  ],
+  "Vehicles": [
+    {
+      "Marka": "BMW",
+      "Model": "320d"
+    }
+  ],
+  "cachedAt": "2026-09-19T08:44:18.289Z",
+  "queryUrl": "https://catalog.mann-filter.com/EU/tur/catalog/MANN-FILTER%20Katalog%20Europa/W%20712",
+  "fromCache": true
+}

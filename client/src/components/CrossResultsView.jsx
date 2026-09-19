@@ -1,12 +1,42 @@
-import React, { useState } from 'react';
-import { Copy, Check, FileSpreadsheet } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import {
+  Copy,
+  Check,
+  FileSpreadsheet,
+  LayoutGrid,
+  Table,
+  ShieldCheck,
+  Star,
+  HardDrive,
+  RefreshCw,
+  Clock
+} from 'lucide-react';
 import { SourceStatusBanner } from './SourceStatusBanner';
+import { CrossComparisonMatrix } from './CrossComparisonMatrix';
+
+/**
+ * Normalizasyon yardımcısı
+ */
+function normalizeCode(s) {
+  return String(s || '')
+    .replace(/[\s()#+\/\-_.]/g, '')
+    .toUpperCase();
+}
 
 /**
  * CrossResultsView Component
- * (Single Responsibility: Çapraz arama sonuçlarını, kaynak raporlama bannerını, JSON ve CSV çıktısını sunar)
+ * (Single Responsibility: Çapraz arama sonuçlarını, kaynak raporlama bannerını,
+ * kart görünümü ve karşılaştırma/puanlama matrisi sekmelerini sunar)
  */
-export function CrossResultsView({ queryCode, searchResponse }) {
+export function CrossResultsView({
+  queryCode,
+  searchResponse,
+  onForceRefresh,
+  loading,
+  onRescanSource,
+  loadingSource
+}) {
+  const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'matrix'
   const [copiedJson, setCopiedJson] = useState(false);
   const [copiedCsv, setCopiedCsv] = useState(false);
 
@@ -21,17 +51,60 @@ export function CrossResultsView({ queryCode, searchResponse }) {
   const totalOems =
     searchResponse.totalOems ||
     results.reduce((acc, curr) => acc + (curr.Oems?.length || 0), 0);
+  const fromCache = searchResponse.fromCache === true;
+  const cachedAt = searchResponse.cachedAt;
+
+  // Her kaynağın döndürdüğü kodlar haritası
+  const sourceCodeMaps = useMemo(() => {
+    const map = new Map();
+    sources.forEach((src) => {
+      const set = new Set();
+      const rawData = src.data || [];
+      rawData.forEach((item) => {
+        if (item.Oems && Array.isArray(item.Oems)) {
+          item.Oems.forEach((o) => {
+            if (o) set.add(normalizeCode(o));
+          });
+        }
+      });
+      map.set(src.name, set);
+    });
+    return map;
+  }, [sources]);
+
+  // Her bir OEM kodu için doğrulayan kaynakları ve puanı hesapla
+  const getOemScoreInfo = (brand, oem) => {
+    const norm = normalizeCode(oem);
+    const confirmed = [];
+    sources.forEach((src) => {
+      const codeSet = sourceCodeMaps.get(src.name);
+      const isDirectHit = codeSet && codeSet.has(norm);
+      const isSourceBrand =
+        src.name.toUpperCase().includes(brand.toUpperCase()) ||
+        brand.toUpperCase().includes(src.name.toUpperCase());
+      if (isDirectHit || (isSourceBrand && src.status === 'success')) {
+        if (!confirmed.includes(src.name)) {
+          confirmed.push(src.name);
+        }
+      }
+    });
+
+    const count = Math.max(confirmed.length, 1);
+    if (count >= 3) {
+      return { score: 100, stars: 3, confirmed, badge: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
+    } else if (count === 2) {
+      return { score: 85, stars: 2, confirmed, badge: 'bg-blue-100 text-blue-800 border-blue-300' };
+    }
+    return { score: 55, stars: 1, confirmed, badge: 'bg-slate-100 text-slate-700 border-slate-200' };
+  };
 
   // Tüm OEM kodlarının içindeki tüm boşlukları kaldırıp tekilleştiren liste
   const getAllUniqueOems = () => {
     const allOems = results.flatMap((item) => item.Oems || []);
-    // Her string'in İÇİNDEKİ TÜM BOŞLUKLARI sil (örn: "WP 12 120/1" -> "WP12120/1")
     const noSpacesList = allOems
       .map((oem) => String(oem).replace(/\s+/g, ''))
       .filter(Boolean);
-    // Tekilleştir (duplicate olmasın)
-    const uniqueClean = [...new Set(noSpacesList)];
-    return uniqueClean;
+    return [...new Set(noSpacesList)];
   };
 
   const handleCopyJson = () => {
@@ -58,10 +131,40 @@ export function CrossResultsView({ queryCode, searchResponse }) {
           sources={sources}
           totalFound={totalOems}
           totalBrands={totalBrands}
+          onRescanSource={onRescanSource}
+          loadingSource={loadingSource}
         />
       )}
 
-      {/* Sonuç Kartları Bölümü */}
+      {/* Önbellek Bilgisi & Yeniden Tara Barı */}
+      {fromCache && (
+        <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-3 px-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-amber-800 font-medium">
+            <HardDrive className="w-4 h-4 text-amber-600 flex-shrink-0" />
+            <span>
+              Bu sonuç <strong>yerel JSON dosya deposundan (Önbellek)</strong> anında yüklendi.
+            </span>
+            {cachedAt && (
+              <span className="text-slate-400 font-mono text-[11px] hidden md:inline">
+                ({new Date(cachedAt).toLocaleString()})
+              </span>
+            )}
+          </div>
+
+          {onForceRefresh && (
+            <button
+              onClick={onForceRefresh}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-xl font-bold transition-all shadow-2xs self-start sm:self-auto disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Siteleri Canlı Yeniden Tara
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Üst Başlık, Görünüm Değiştirici ve Kopyalama Butonları */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
@@ -73,11 +176,37 @@ export function CrossResultsView({ queryCode, searchResponse }) {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Görünüm Değiştirici (Cards vs Matrix) */}
+            <div className="flex items-center bg-slate-200/70 p-1 rounded-xl border border-slate-200">
+              <button
+                onClick={() => setViewMode('cards')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  viewMode === 'cards'
+                    ? 'bg-white text-slate-800 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                Kartlar
+              </button>
+              <button
+                onClick={() => setViewMode('matrix')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  viewMode === 'matrix'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Table className="w-3.5 h-3.5" />
+                Karşılaştırma & Puanlama
+              </button>
+            </div>
+
             {/* CSV Kopyala Butonu */}
             <button
               onClick={handleCopyCsv}
-              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-lg transition-all text-xs font-bold shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl transition-all text-xs font-bold shadow-xs"
               title="Tüm OEM kodlarını aralarında virgül olan tekil CSV formatında kopyala"
             >
               {copiedCsv ? (
@@ -86,7 +215,7 @@ export function CrossResultsView({ queryCode, searchResponse }) {
                 </span>
               ) : (
                 <>
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> OEM CSV Kopyala
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> OEM CSV
                 </>
               )}
             </button>
@@ -94,7 +223,7 @@ export function CrossResultsView({ queryCode, searchResponse }) {
             {/* JSON Kopyala Butonu */}
             <button
               onClick={handleCopyJson}
-              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-lg transition-all text-xs font-bold shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl transition-all text-xs font-bold shadow-xs"
             >
               {copiedJson ? (
                 <span className="text-green-600 flex items-center gap-1.5">
@@ -102,7 +231,7 @@ export function CrossResultsView({ queryCode, searchResponse }) {
                 </span>
               ) : (
                 <>
-                  <Copy className="w-3.5 h-3.5 text-slate-500" /> JSON Kopyala
+                  <Copy className="w-3.5 h-3.5 text-slate-500" /> JSON
                 </>
               )}
             </button>
@@ -126,40 +255,63 @@ export function CrossResultsView({ queryCode, searchResponse }) {
           </div>
         )}
 
-        {results.length === 0 ? (
-          <div className="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm border border-slate-200">
-            Bu filtre kodu için taranan sitelerde muadil eşleşmesi bulunamadı.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {results.map((item, idx) => (
-              <div
-                key={idx}
-                className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:border-blue-300 transition-all"
-              >
-                <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-blue-600"></div>
-                    <span className="font-extrabold text-sm text-slate-900 tracking-wide">
-                      {item['Üretici Adı']}
-                    </span>
-                  </div>
-                  <span className="text-[11px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                    {item.Oems.length} Kod
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {item.Oems.map((oem, oIdx) => (
-                    <span
-                      key={oIdx}
-                      className="bg-slate-50 border border-slate-200 hover:border-blue-400 text-slate-800 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all shadow-2xs"
-                    >
-                      {oem}
-                    </span>
-                  ))}
-                </div>
+        {/* 1. SEÇENEK: Karşılaştırma & Puanlama Matrisi Görünümü */}
+        {viewMode === 'matrix' && (
+          <CrossComparisonMatrix searchResponse={searchResponse} queryCode={queryCode} />
+        )}
+
+        {/* 2. SEÇENEK: Klasik Kart Görünümü (Puanlama Rozetleri İle Geliştirilmiş) */}
+        {viewMode === 'cards' && (
+          <div>
+            {results.length === 0 ? (
+              <div className="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm border border-slate-200">
+                Bu filtre kodu için taranan sitelerde muadil eşleşmesi bulunamadı.
               </div>
-            ))}
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {results.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:border-blue-300 transition-all"
+                  >
+                    <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full bg-blue-600"></div>
+                        <span className="font-extrabold text-sm text-slate-900 tracking-wide">
+                          {item['Üretici Adı']}
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                        {item.Oems.length} Kod
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {item.Oems.map((oem, oIdx) => {
+                        const scoreInfo = getOemScoreInfo(item['Üretici Adı'], oem);
+                        return (
+                          <div
+                            key={oIdx}
+                            className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 hover:border-blue-400 text-slate-800 px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all shadow-2xs group relative"
+                            title={`Doğrulayan Siteler: ${scoreInfo.confirmed.join(', ')} (${scoreInfo.score}% Güven)`}
+                          >
+                            <span>{oem}</span>
+                            <span
+                              className={`text-[10px] font-sans px-1.5 py-0.2 rounded border font-semibold flex items-center gap-0.5 ${scoreInfo.badge}`}
+                            >
+                              {scoreInfo.stars >= 2 && (
+                                <Star className="w-2.5 h-2.5 fill-current text-amber-500" />
+                              )}
+                              {scoreInfo.score}%
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

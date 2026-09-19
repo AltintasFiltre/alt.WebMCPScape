@@ -1,0 +1,18 @@
+[
+  {
+    "id": "url_catalog_mann_filter_com_ec315d6bb0aa",
+    "type": "url",
+    "title": "https://catalog.mann-filter.com/EU/tur/catalog/MANN-FILTER%20Katalog%20Europa/W%20712",
+    "timestamp": "2026-09-19T08:44:18.290Z",
+    "fileName": "catalog_mann_filter_com_ec315d6bb0aa.json"
+  },
+  {
+    "id": "cross_SO670",
+    "type": "cross",
+    "title": "SO670",
+    "totalBrands": 2,
+    "totalOems": 2,
+    "timestamp": "2026-09-19T08:43:09.198Z",
+    "fileName": "SO670.json"
+  }
+]

@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  webmcpscape:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: webmcpscape_app
+    restart: unless-stopped
+    ports:
+      - "4002:4002"
+    environment:
+      - NODE_ENV=production
+      - PORT=4002
+    volumes:
+      # VM / Host üzerindeki ./data klasörünü container içindeki /app/data ile kalıcı olarak eşle
+      - ./data:/app/data

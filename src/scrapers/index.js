@@ -7,6 +7,8 @@ const { MahleScraper } = require('./MahleScraper');
 const { FleetguardScraper } = require('./FleetguardScraper');
 const { SampiyonScraper } = require('./SampiyonScraper');
 const { FilScraper } = require('./FilScraper');
+const { SCTurboScraper } = require('./SCTurboScraper');
+const { BaldwinScraper } = require('./BaldwinScraper');
 
 /**
  * Fabrika (Factory Pattern) ve Registry:
@@ -23,7 +25,9 @@ function createScrapers() {
     new MahleScraper(),
     new FleetguardScraper(),
     new SampiyonScraper(),
-    new FilScraper()
+    new FilScraper(),
+    new SCTurboScraper(),
+    new BaldwinScraper()
   ];
 }
 
@@ -37,5 +41,7 @@ module.exports = {
   MahleScraper,
   FleetguardScraper,
   SampiyonScraper,
-  FilScraper
+  FilScraper,
+  SCTurboScraper,
+  BaldwinScraper
 };

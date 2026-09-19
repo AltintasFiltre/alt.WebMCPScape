@@ -1,0 +1,28 @@
+{
+  "queryCode": "SO670",
+  "results": [
+    {
+      "Üretici Adı": "BALDWIN",
+      "Oems": [
+        "B96"
+      ]
+    },
+    {
+      "Üretici Adı": "HiFi",
+      "Oems": [
+        "SO670"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "name": "BALDWIN",
+      "status": "success",
+      "foundCount": 2,
+      "durationMs": 120
+    }
+  ],
+  "totalBrands": 2,
+  "totalOems": 2,
+  "cachedAt": "2026-09-19T08:43:09.197Z"
+}

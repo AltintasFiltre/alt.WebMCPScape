@@ -23,7 +23,9 @@ const {
   MahleScraper,
   FleetguardScraper,
   SampiyonScraper,
-  FilScraper
+  FilScraper,
+  SCTurboScraper,
+  BaldwinScraper
 } = require('./src/scrapers');
 
 const crossReferenceService = new CrossReferenceService();
@@ -45,6 +47,8 @@ const mahleScraper = new MahleScraper();
 const fleetguardScraper = new FleetguardScraper();
 const sampiyonScraper = new SampiyonScraper();
 const filScraper = new FilScraper();
+const scTurboScraper = new SCTurboScraper();
+const baldwinScraper = new BaldwinScraper();
 
 module.exports = {
   searchCrossReferences,
@@ -57,6 +61,8 @@ module.exports = {
   searchFleetguard: (page, code) => fleetguardScraper.search(code, page),
   searchSampiyon: (page, code) => sampiyonScraper.search(code, page),
   searchFil: (page, code) => filScraper.search(code, page),
+  searchSCTurbo: (code) => scTurboScraper.search(code),
+  searchBaldwin: (code) => baldwinScraper.search(code),
   mergeCrossResults: ResultAggregator.aggregate,
   isExactCodeMatch,
   normalizeCode,

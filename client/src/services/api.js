@@ -8,16 +8,88 @@ const getBaseUrl = () => {
 };
 
 export const ApiService = {
-  async searchCrossReferences(code) {
+  async searchCrossReferences(code, forceRefresh = false) {
     if (!code || !code.trim()) {
       throw new Error('Filtre kodu gereklidir.');
     }
     const baseUrl = getBaseUrl();
-    const response = await fetch(`${baseUrl}/api/cross-search?code=${encodeURIComponent(code.trim())}`);
+    const url = `${baseUrl}/api/cross-search?code=${encodeURIComponent(code.trim())}${forceRefresh ? '&refresh=true' : ''}`;
+    const response = await fetch(url);
     const data = await response.json();
 
     if (!response.ok) {
       throw new Error(data.error || 'Muadil arama sırasında bir hata oluştu.');
+    }
+    return data;
+  },
+
+  /**
+   * Canlı SSE Akışı ile Gerçek Zamanlı Muadil Arama & İlerleme Raporu
+   */
+  async searchCrossReferencesStream(code, forceRefresh = false, onProgress = null) {
+    if (!code || !code.trim()) {
+      throw new Error('Filtre kodu gereklidir.');
+    }
+    const baseUrl = getBaseUrl();
+    const url = `${baseUrl}/api/cross-search-stream?code=${encodeURIComponent(code.trim())}${forceRefresh ? '&refresh=true' : ''}`;
+
+    return new Promise((resolve, reject) => {
+      const eventSource = new EventSource(url);
+      let finalResult = null;
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.type === 'complete') {
+            finalResult = data.data;
+            if (typeof onProgress === 'function') {
+              onProgress(data);
+            }
+            eventSource.close();
+            resolve(finalResult);
+          } else if (data.type === 'error') {
+            eventSource.close();
+            reject(new Error(data.error || 'Muadil arama sırasında hata oluştu.'));
+          } else {
+            if (typeof onProgress === 'function') {
+              onProgress(data);
+            }
+          }
+        } catch (err) {
+          console.error('SSE parse error:', err);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        eventSource.close();
+        // Eğer zaten sonuç geldiyse hata fırlatma
+        if (finalResult) {
+          resolve(finalResult);
+        } else {
+          // Fallback olarak standart REST endpointini dene
+          this.searchCrossReferences(code, forceRefresh)
+            .then(resolve)
+            .catch(reject);
+        }
+      };
+    });
+  },
+
+  /**
+   * Sadece TEK BİR üretici / katalog scraper'ını çalıştırır
+   */
+  async searchSingleProvider(code, scraperName) {
+    if (!code || !scraperName) {
+      throw new Error('Filtre kodu ve üretici adı gereklidir.');
+    }
+    const baseUrl = getBaseUrl();
+    const url = `${baseUrl}/api/cross-search-single?code=${encodeURIComponent(code.trim())}&scraper=${encodeURIComponent(scraperName.trim())}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || `${scraperName} taranırken bir hata oluştu.`);
     }
     return data;
   },
@@ -34,5 +106,44 @@ export const ApiService = {
       throw new Error(data.error || 'Veri çekilirken bir hata oluştu.');
     }
     return data;
+  },
+
+  async getHistory() {
+    try {
+      const baseUrl = getBaseUrl();
+      const response = await fetch(`${baseUrl}/api/history`);
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (e) {
+      console.warn('Server history fetch error:', e);
+    }
+    return [];
+  },
+
+  async deleteHistoryItem(code) {
+    try {
+      const baseUrl = getBaseUrl();
+      const response = await fetch(`${baseUrl}/api/history/${encodeURIComponent(code)}`, {
+        method: 'DELETE'
+      });
+      return response.ok;
+    } catch (e) {
+      console.warn('Server history delete error:', e);
+      return false;
+    }
+  },
+
+  async clearHistory() {
+    try {
+      const baseUrl = getBaseUrl();
+      const response = await fetch(`${baseUrl}/api/history`, {
+        method: 'DELETE'
+      });
+      return response.ok;
+    } catch (e) {
+      console.warn('Server history clear error:', e);
+      return false;
+    }
   }
 };
