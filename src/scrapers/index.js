@@ -9,6 +9,7 @@ const { SampiyonScraper } = require('./SampiyonScraper');
 const { FilScraper } = require('./FilScraper');
 const { SCTurboScraper } = require('./SCTurboScraper');
 const { BaldwinScraper } = require('./BaldwinScraper');
+const { HiFiScraper } = require('./HiFiScraper');
 
 /**
  * Fabrika (Factory Pattern) ve Registry:
@@ -27,7 +28,8 @@ function createScrapers() {
     new SampiyonScraper(),
     new FilScraper(),
     new SCTurboScraper(),
-    new BaldwinScraper()
+    new BaldwinScraper(),
+    new HiFiScraper()
   ];
 }
 
@@ -43,5 +45,6 @@ module.exports = {
   SampiyonScraper,
   FilScraper,
   SCTurboScraper,
-  BaldwinScraper
+  BaldwinScraper,
+  HiFiScraper
 };

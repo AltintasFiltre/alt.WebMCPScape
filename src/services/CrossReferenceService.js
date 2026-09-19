@@ -122,10 +122,21 @@ class CrossReferenceService {
     if (browserScrapers.length > 0) {
       let browser = null;
       try {
-        browser = await chromium.launch({ headless: true });
+        browser = await chromium.launch({
+          headless: false,
+          args: [
+            '--disable-blink-features=AutomationControlled',
+            '--no-sandbox',
+            '--disable-infobars',
+            '--window-position=-2400,-2400'
+          ]
+        });
         const context = await browser.newContext({
           ignoreHTTPSErrors: true,
           userAgent: USER_AGENT
+        });
+        await context.addInitScript(() => {
+          Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         });
 
         const browserPromises = browserScrapers.map(async (scraper) => {
@@ -255,10 +266,21 @@ class CrossReferenceService {
     } else {
       let browser = null;
       try {
-        browser = await chromium.launch({ headless: true });
+        browser = await chromium.launch({
+          headless: false,
+          args: [
+            '--disable-blink-features=AutomationControlled',
+            '--no-sandbox',
+            '--disable-infobars',
+            '--window-position=-2400,-2400'
+          ]
+        });
         const context = await browser.newContext({
           ignoreHTTPSErrors: true,
           userAgent: USER_AGENT
+        });
+        await context.addInitScript(() => {
+          Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         });
         const page = await context.newPage();
         try {

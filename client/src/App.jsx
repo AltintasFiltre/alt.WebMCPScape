@@ -30,7 +30,7 @@ function App() {
   // Canlı Tarama İlerleme Durumu (SSE)
   const [progressState, setProgressState] = useState({
     active: false,
-    totalScrapers: 11,
+    totalScrapers: 12,
     completedCount: 0,
     currentScraper: '',
     sources: {}
@@ -116,7 +116,7 @@ function App() {
         // Canlı ilerleme state'ini başlat
         setProgressState({
           active: true,
-          totalScrapers: 11,
+          totalScrapers: 12,
           completedCount: 0,
           currentScraper: 'Katalog bağlantıları kuruluyor...',
           sources: {}
