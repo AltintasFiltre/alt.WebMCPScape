@@ -41,19 +41,19 @@ export function CrossResultsView({
   const [copiedJson, setCopiedJson] = useState(false);
   const [copiedCsv, setCopiedCsv] = useState(false);
 
-  if (!searchResponse) return null;
-
   // Geriye dönük uyumluluk: response doğrudan dizi veya { results, sources } objesi olabilir
-  const results = Array.isArray(searchResponse)
+  const results = !searchResponse
+    ? []
+    : Array.isArray(searchResponse)
     ? searchResponse
     : searchResponse.results || [];
-  const sources = searchResponse.sources || [];
-  const totalBrands = searchResponse.totalBrands || results.length;
+  const sources = searchResponse?.sources || [];
+  const totalBrands = searchResponse?.totalBrands || results.length;
   const totalOems =
-    searchResponse.totalOems ||
+    searchResponse?.totalOems ||
     results.reduce((acc, curr) => acc + (curr.Oems?.length || 0), 0);
-  const fromCache = searchResponse.fromCache === true;
-  const cachedAt = searchResponse.cachedAt;
+  const fromCache = searchResponse?.fromCache === true;
+  const cachedAt = searchResponse?.cachedAt;
 
   // Her kaynağın döndürdüğü kodlar haritası
   const sourceCodeMaps = useMemo(() => {
@@ -72,6 +72,8 @@ export function CrossResultsView({
     });
     return map;
   }, [sources]);
+
+  if (!searchResponse) return null;
 
   // Her bir OEM kodu için doğrulayan kaynakları ve puanı hesapla
   const getOemScoreInfo = (brand, oem) => {

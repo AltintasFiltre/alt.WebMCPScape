@@ -38,12 +38,12 @@ export function CrossComparisonMatrix({ searchResponse, queryCode }) {
   const [sortBy, setSortBy] = useState('score_desc'); // 'score_desc' | 'score_asc' | 'oem_asc' | 'brand_asc'
   const [copiedHighCsv, setCopiedHighCsv] = useState(false);
 
-  if (!searchResponse) return null;
-
-  const results = Array.isArray(searchResponse)
+  const results = !searchResponse
+    ? []
+    : Array.isArray(searchResponse)
     ? searchResponse
     : searchResponse.results || [];
-  const sources = searchResponse.sources || [];
+  const sources = searchResponse?.sources || [];
 
   // Sadece başarılı olan veya sonuç getiren kaynakları sütun olarak listele
   const activeSources = useMemo(() => {
@@ -195,6 +195,8 @@ export function CrossComparisonMatrix({ searchResponse, queryCode }) {
     setCopiedHighCsv(true);
     setTimeout(() => setCopiedHighCsv(false), 2000);
   };
+
+  if (!searchResponse) return null;
 
   return (
     <div className="space-y-6">
