@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { SourceStatusBanner } from './SourceStatusBanner';
 import { CrossComparisonMatrix } from './CrossComparisonMatrix';
+import { OemImagePreviewPopover } from './OemImagePreviewPopover';
 
 /**
  * Normalizasyon yardımcısı
@@ -290,21 +291,26 @@ export function CrossResultsView({
                       {item.Oems.map((oem, oIdx) => {
                         const scoreInfo = getOemScoreInfo(item['Üretici Adı'], oem);
                         return (
-                          <div
+                          <OemImagePreviewPopover
                             key={oIdx}
-                            className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 hover:border-blue-400 text-slate-800 px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all shadow-2xs group relative"
-                            title={`Doğrulayan Siteler: ${scoreInfo.confirmed.join(', ')} (${scoreInfo.score}% Güven)`}
+                            brand={item['Üretici Adı']}
+                            oem={oem}
                           >
-                            <span>{oem}</span>
-                            <span
-                              className={`text-[10px] font-sans px-1.5 py-0.2 rounded border font-semibold flex items-center gap-0.5 ${scoreInfo.badge}`}
+                            <div
+                              className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 hover:border-blue-400 text-slate-800 px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all shadow-2xs group relative cursor-pointer"
+                              title={`Doğrulayan Siteler: ${scoreInfo.confirmed.join(', ')} (${scoreInfo.score}% Güven) - Resimleri görmek için üzerine gelin`}
                             >
-                              {scoreInfo.stars >= 2 && (
-                                <Star className="w-2.5 h-2.5 fill-current text-amber-500" />
-                              )}
-                              {scoreInfo.score}%
-                            </span>
-                          </div>
+                              <span>{oem}</span>
+                              <span
+                                className={`text-[10px] font-sans px-1.5 py-0.2 rounded border font-semibold flex items-center gap-0.5 ${scoreInfo.badge}`}
+                              >
+                                {scoreInfo.stars >= 2 && (
+                                  <Star className="w-2.5 h-2.5 fill-current text-amber-500" />
+                                )}
+                                {scoreInfo.score}%
+                              </span>
+                            </div>
+                          </OemImagePreviewPopover>
                         );
                       })}
                     </div>

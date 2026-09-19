@@ -94,6 +94,29 @@ export const ApiService = {
     return data;
   },
 
+  /**
+   * Filtre/OEM koduna ait ürün görsellerini getirir
+   */
+  async fetchOemImages(brand, oem) {
+    if (!oem) return { images: [], googleSearchUrl: '' };
+    try {
+      const baseUrl = getBaseUrl();
+      const url = `${baseUrl}/api/images?brand=${encodeURIComponent(brand || '')}&oem=${encodeURIComponent(oem.trim())}`;
+      const response = await fetch(url);
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (e) {
+      console.warn('Fetch images error:', e);
+    }
+    return {
+      brand,
+      oem,
+      images: [],
+      googleSearchUrl: `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(`${brand} ${oem} filter`.trim())}`
+    };
+  },
+
   async scrapeUrl(url) {
     if (!url || !url.trim()) {
       throw new Error('URL parametresi gereklidir.');

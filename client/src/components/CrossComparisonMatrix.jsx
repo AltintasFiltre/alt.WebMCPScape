@@ -13,6 +13,7 @@ import {
   Layers,
   Award
 } from 'lucide-react';
+import { OemImagePreviewPopover } from './OemImagePreviewPopover';
 
 /**
  * Normalizasyon yardımcı fonksiyonu (karşılaştırma için boşluk ve sembolleri kaldırır)
@@ -386,9 +387,11 @@ export function CrossComparisonMatrix({ searchResponse, queryCode }) {
                     {/* OEM Kodu */}
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
-                        <span className="bg-slate-100 text-slate-900 font-bold px-2.5 py-1 rounded-lg border border-slate-200/80 group-hover:border-blue-300">
-                          {row.oem}
-                        </span>
+                        <OemImagePreviewPopover brand={row.brand} oem={row.oem}>
+                          <span className="bg-slate-100 text-slate-900 font-bold px-2.5 py-1 rounded-lg border border-slate-200/80 group-hover:border-blue-400 hover:bg-blue-50 transition-colors cursor-pointer inline-block">
+                            {row.oem}
+                          </span>
+                        </OemImagePreviewPopover>
                       </div>
                     </td>
 

@@ -142,6 +142,32 @@ app.get('/api/cross-search-single', async (req, res) => {
   }
 });
 
+const { ImageSearchService } = require('./src/services/ImageSearchService');
+
+// API endpoint for fetching OEM product images
+app.get('/api/images', async (req, res) => {
+  const { brand = '', oem = '' } = req.query;
+
+  if (!oem) {
+    return res.status(400).json({ error: 'OEM parametresi gereklidir.' });
+  }
+
+  try {
+    const images = await ImageSearchService.searchImages(brand, oem, 6);
+    const googleSearchUrl = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(`${brand} ${oem} filter`.trim())}`;
+
+    res.json({
+      brand,
+      oem,
+      images,
+      googleSearchUrl
+    });
+  } catch (error) {
+    console.error('Images search error:', error);
+    res.status(500).json({ error: 'Görsel arama sırasında bir hata oluştu.' });
+  }
+});
+
 // API endpoint for multi-site cross-reference search (Dosya tabanlı önbellek destekli)
 app.get('/api/cross-search', async (req, res) => {
   const { code, refresh } = req.query;
