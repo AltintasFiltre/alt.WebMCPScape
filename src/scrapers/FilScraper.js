@@ -5,7 +5,7 @@ const { USER_AGENT } = require('../config/constants');
 class FilScraper extends BaseScraper {
   constructor() {
     super('FİL FİLTRE');
-    this.token = 'd16042de9ea2ff17ca20a1afbce6f7f0';
+    this.token = null;
     this.tokenExpiry = 0;
   }
 
@@ -13,27 +13,41 @@ class FilScraper extends BaseScraper {
     return 'http';
   }
 
-  async getToken() {
-    if (this.token && Date.now() < this.tokenExpiry) {
+  /**
+   * Fil Filter API için güncel x-catalog-token değerini dinamik olarak çeker.
+   */
+  async getToken(forceRefresh = false) {
+    if (!forceRefresh && this.token && Date.now() < this.tokenExpiry) {
       return this.token;
     }
+
     try {
       const res = await fetch('https://catalog.filfilter.com.tr/tr', {
-        headers: { 'User-Agent': USER_AGENT }
+        headers: {
+          'User-Agent': USER_AGENT,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
       });
+
       if (res.ok) {
         const html = await res.text();
-        const match = html.match(/"token":"([a-f0-9]{32})"/);
+        // HTML veya gömülü Next.js RSC JSON içindeki token stringini yakala (escape'li ve normal formatlar)
+        const match =
+          html.match(/token\\*":\\*"?([a-f0-9]{32})/i) ||
+          html.match(/["\\]*token["\\]*:\s*["\\]*([a-f0-9]{32})/i) ||
+          html.match(/"x-catalog-token":\s*"([a-f0-9]{32})"/i);
+
         if (match && match[1]) {
           this.token = match[1];
-          this.tokenExpiry = Date.now() + 3600 * 1000; // 1 saat geçerli
+          this.tokenExpiry = Date.now() + 10 * 60 * 1000; // 10 dakika önbellek
           return this.token;
         }
       }
     } catch (e) {
-      console.warn('Fil Filter token alınamadı, varsayılan token kullanılacak:', e.message);
+      console.warn('Fil Filter token çekme hatası:', e.message);
     }
-    return this.token || 'd16042de9ea2ff17ca20a1afbce6f7f0';
+
+    return this.token || 'e1cc9f1d02306cda25f4196dd7a0169e';
   }
 
   async search(code) {
@@ -57,9 +71,8 @@ class FilScraper extends BaseScraper {
         });
 
         if (res.status === 401) {
-          // Token süresi dolmuşsa yenile ve tekrar dene
-          this.tokenExpiry = 0;
-          token = await this.getToken();
+          // Token süresi dolduysa zorunlu yenile ve tekrar dene
+          token = await this.getToken(true);
           res = await fetch(url, {
             headers: {
               'User-Agent': USER_AGENT,
