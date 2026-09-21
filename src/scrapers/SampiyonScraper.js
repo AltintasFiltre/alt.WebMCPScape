@@ -1,5 +1,5 @@
 const { BaseScraper } = require('./BaseScraper');
-const { isValidCode } = require('../utils/filterNormalizer');
+const { getCodeVariations, isExactCodeMatch, isValidCode, normalizeBrand } = require('../utils/filterNormalizer');
 
 class SampiyonScraper extends BaseScraper {
   constructor() {
@@ -13,51 +13,68 @@ class SampiyonScraper extends BaseScraper {
   async search(code, page) {
     if (!page) return [];
     try {
-      const cleanCode = code.replace(/\s+/g, "");
-      const url = "https://www.sampiyonfilter.com.tr/katalog/koda-gore-arama?s=" + encodeURIComponent(cleanCode) + "#h";
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
-      await page.waitForTimeout(2000);
+      const cleanCode = code.trim().replace(/\s+/g, '');
+      const url = `https://www.sampiyonfilter.com.tr/katalog/koda-gore-arama?s=${encodeURIComponent(cleanCode)}#h`;
+      
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+      
+      // Tablo satırlarının veya boş uyarı mesajının yüklenmesini dinamik olarak bekle
+      await page.waitForSelector('table tbody tr, .alert-warning, .card-body', { timeout: 8000 }).catch(() => {});
+      await page.waitForTimeout(1000);
 
-      const data = await page.evaluate((searchCode) => {
-        function normalize(s) {
-          return String(s || "").replace(/[\s()#+]/g, "").toUpperCase();
-        }
-
-        const sampiyonCodes = [];
-        const crossItems = [];
-        document.querySelectorAll("table tr").forEach((tr) => {
-          const cells = Array.from(tr.querySelectorAll("td")).map((td) => td.innerText.trim());
+      const rawRows = await page.evaluate(() => {
+        const rows = [];
+        document.querySelectorAll('table tbody tr').forEach((tr) => {
+          const cells = Array.from(tr.querySelectorAll('td')).map((td) => td.innerText.trim());
           if (cells.length >= 4) {
-            const kod = cells[1];
-            const uretici = cells[2];
-            const sampiyonKodu = cells[3];
-
-            if (normalize(kod) === normalize(searchCode)) {
-              if (sampiyonKodu) {
-                sampiyonCodes.push(sampiyonKodu);
-              }
-              if (uretici && kod) {
-                crossItems.push({ "Üretici Adı": uretici, "Oems": [kod] });
-              }
-            }
+            rows.push({
+              kod: cells[1] || '',
+              uretici: cells[2] || '',
+              sampiyonKodu: cells[3] || ''
+            });
           }
         });
-        return { sampiyonCodes, crossItems };
-      }, code);
+        return rows;
+      });
 
-      const results = [];
-      const validSamp = data.sampiyonCodes.filter(isValidCode);
-      if (validSamp.length > 0) {
-        results.push({ "Üretici Adı": "ŞAMPİYON", "Oems": [...new Set(validSamp)] });
-      }
-      for (const item of data.crossItems) {
-        if (isValidCode(item["Üretici Adı"]) && item.Oems.some(isValidCode)) {
-          results.push({ "Üretici Adı": item["Üretici Adı"], "Oems": item.Oems.filter(isValidCode) });
+      const sampiyonCodes = [];
+      const crossResults = [];
+
+      for (const row of rawRows) {
+        const kod = row.kod;
+        const uretici = row.uretici;
+        const sampiyonKodu = row.sampiyonKodu;
+
+        const isKodMatch = kod && isExactCodeMatch(code, kod);
+        const isSampMatch = sampiyonKodu && isExactCodeMatch(code, sampiyonKodu);
+
+        if (!isKodMatch && !isSampMatch) {
+          continue;
+        }
+
+        if (sampiyonKodu && isValidCode(sampiyonKodu)) {
+          sampiyonCodes.push(sampiyonKodu);
+        }
+
+        if (isKodMatch && uretici && kod && isValidCode(kod)) {
+          const normBrand = normalizeBrand(uretici) || uretici;
+          if (normBrand && isValidCode(normBrand)) {
+            crossResults.push({
+              'Üretici Adı': normBrand,
+              'Oems': [kod]
+            });
+          }
         }
       }
+
+      const results = [];
+      if (sampiyonCodes.length > 0) {
+        results.push({ 'Üretici Adı': 'ŞAMPİYON', 'Oems': [...new Set(sampiyonCodes)] });
+      }
+      results.push(...crossResults);
       return results;
     } catch (err) {
-      console.error("Sampiyon search error:", err.message);
+      console.error('Sampiyon search error:', err.message);
       return [];
     }
   }
