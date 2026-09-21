@@ -1,5 +1,5 @@
 const { BaseScraper } = require('./BaseScraper');
-const { getCodeVariations, isExactCodeMatch, isValidCode, normalizeBrand } = require('../utils/filterNormalizer');
+const { isExactCodeMatch, isValidCode, normalizeBrand } = require('../utils/filterNormalizer');
 
 class SampiyonScraper extends BaseScraper {
   constructor() {
@@ -16,11 +16,21 @@ class SampiyonScraper extends BaseScraper {
       const cleanCode = code.trim().replace(/\s+/g, '');
       const url = `https://www.sampiyonfilter.com.tr/katalog/koda-gore-arama?s=${encodeURIComponent(cleanCode)}#h`;
       
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+      // Sayfa yükleme hızını 5x artırmak için gereksiz resim, font ve analitik isteklerini engelle
+      await page.route('**/*', (route) => {
+        const type = route.request().resourceType();
+        const reqUrl = route.request().url();
+        if (['image', 'media', 'font'].includes(type) || reqUrl.includes('google') || reqUrl.includes('analytics') || reqUrl.includes('facebook')) {
+          return route.abort();
+        }
+        return route.continue();
+      }).catch(() => {});
+
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
       
-      // Tablo satırlarının veya boş uyarı mesajının yüklenmesini dinamik olarak bekle
-      await page.waitForSelector('table tbody tr, .alert-warning, .card-body', { timeout: 8000 }).catch(() => {});
-      await page.waitForTimeout(1000);
+      // Tablo satırlarının veya sonuç yok uyarısının render edilmesini bekle
+      await page.waitForSelector('table tbody tr, .alert-warning, .card-body', { timeout: 6000 }).catch(() => {});
+      await page.waitForTimeout(600);
 
       const rawRows = await page.evaluate(() => {
         const rows = [];

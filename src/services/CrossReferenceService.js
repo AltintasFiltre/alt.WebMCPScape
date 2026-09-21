@@ -17,7 +17,7 @@ class CrossReferenceService {
 
   /**
    * Verilen filtre kodunu tüm kayıtlı scraper'lar ile tarar.
-   * Canlı ilerleme için opsiyonel onProgress callback'ini çağırır.
+   * Canlı ilerleme ve anlık canlı kart güncellemeleri için opsiyonel onProgress callback'ini çağırır.
    * 
    * @param {string} code 
    * @param {function} [onProgress] - (event) => void
@@ -54,6 +54,17 @@ class CrossReferenceService {
     const sourceReports = [];
     const allRawResults = [];
 
+    const getLiveData = () => {
+      const agg = ResultAggregator.aggregate(allRawResults);
+      return {
+        queryCode,
+        results: agg,
+        sources: [...sourceReports],
+        totalBrands: agg.length,
+        totalOems: agg.reduce((acc, curr) => acc + curr.Oems.length, 0)
+      };
+    };
+
     // 1. Hızlı HTTP / API Scraper'ları paralel çalıştır
     const httpPromises = httpScrapers.map(async (scraper) => {
       const startTime = Date.now();
@@ -78,6 +89,9 @@ class CrossReferenceService {
           data: raw
         };
         sourceReports.push(report);
+        if (Array.isArray(raw) && raw.length > 0) {
+          allRawResults.push(...raw);
+        }
         completedCount++;
 
         if (typeof onProgress === 'function') {
@@ -85,7 +99,8 @@ class CrossReferenceService {
             type: 'scraper_done',
             report,
             completedCount,
-            totalScrapers
+            totalScrapers,
+            liveData: getLiveData()
           });
         }
         return raw;
@@ -108,22 +123,22 @@ class CrossReferenceService {
             type: 'scraper_done',
             report,
             completedCount,
-            totalScrapers
+            totalScrapers,
+            liveData: getLiveData()
           });
         }
         return [];
       }
     });
 
-    const httpResults = await Promise.all(httpPromises);
-    allRawResults.push(...httpResults.flat());
+    await Promise.all(httpPromises);
 
     // 2. Playwright Tabanlı Scraper'ları paylaşılan tek bir tarayıcı oturumunda paralel çalıştır
     if (browserScrapers.length > 0) {
       let browser = null;
       try {
         browser = await chromium.launch({
-          headless: false,
+          headless: true,
           args: [
             '--disable-blink-features=AutomationControlled',
             '--no-sandbox',
@@ -163,6 +178,9 @@ class CrossReferenceService {
               data: raw
             };
             sourceReports.push(report);
+            if (Array.isArray(raw) && raw.length > 0) {
+              allRawResults.push(...raw);
+            }
             completedCount++;
 
             if (typeof onProgress === 'function') {
@@ -170,7 +188,8 @@ class CrossReferenceService {
                 type: 'scraper_done',
                 report,
                 completedCount,
-                totalScrapers
+                totalScrapers,
+                liveData: getLiveData()
               });
             }
             return raw;
@@ -193,7 +212,8 @@ class CrossReferenceService {
                 type: 'scraper_done',
                 report,
                 completedCount,
-                totalScrapers
+                totalScrapers,
+                liveData: getLiveData()
               });
             }
             return [];
@@ -202,8 +222,7 @@ class CrossReferenceService {
           }
         });
 
-        const browserResults = await Promise.all(browserPromises);
-        allRawResults.push(...browserResults.flat());
+        await Promise.all(browserPromises);
       } catch (err) {
         console.error("Browser scraping session error:", err.message);
       } finally {
@@ -267,7 +286,7 @@ class CrossReferenceService {
       let browser = null;
       try {
         browser = await chromium.launch({
-          headless: false,
+          headless: true,
           args: [
             '--disable-blink-features=AutomationControlled',
             '--no-sandbox',

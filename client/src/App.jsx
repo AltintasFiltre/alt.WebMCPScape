@@ -14,7 +14,7 @@ import { ScrapingProgressBar } from './components/ScrapingProgressBar';
  * SOLID Prensiplerine Uygun:
  * - State ve iş mantığı temiz custom hook ve API servislerine taşındı (SRP).
  * - Görsel bileşenler modüler hale getirildi (Header, Sidebar, SearchForm, CrossResultsView, SingleScrapeView, ScrapingProgressBar).
- * - Gerçek zamanlı SSE ilerleme takibi, tekil üreticiyi canlı tekrar tarama ve kalıcı JSON dosya önbelleği entegre edildi.
+ * - Gerçek zamanlı SSE ilerleme takibi, anlık canlı kart render etme, tekil üreticiyi canlı tekrar tarama ve kalıcı JSON dosya önbelleği entegre edildi.
  */
 function App() {
   const [mode, setMode] = useState('cross'); // 'cross' | 'url'
@@ -115,7 +115,7 @@ function App() {
     }
   };
 
-  // Arama formu submit (SSE ile Canlı İlerleme Takibi)
+  // Arama formu submit (SSE ile Canlı İlerleme Takibi & Anlık Kart Akışı)
   const handleSubmit = async (e, forceRefresh = false) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!inputVal.trim()) return;
@@ -179,7 +179,7 @@ function App() {
           setCrossResults(data);
           saveToHistory('cross', dualTitle, data);
         } else {
-          // Tekil Referans Arama Akışı
+          // Tekil Referans Arama Akışı (Canlı Kart Akışı)
           setCurrentCrossCode(inputVal.trim());
 
           setProgressState({
@@ -231,6 +231,10 @@ function App() {
                     [rep.name]: rep
                   }
                 }));
+                // Her scraper tamamlandığında anlık kartları UI'a canlı yansıt
+                if (event.liveData) {
+                  setCrossResults(event.liveData);
+                }
               } else if (event.type === 'complete') {
                 setProgressState((prev) => ({
                   ...prev,
@@ -303,8 +307,8 @@ function App() {
             />
           )}
 
-          {/* Results: Cross Reference Mode */}
-          {mode === 'cross' && !loading && (
+          {/* Results: Cross Reference Mode (Sonuçlar geldikçe canlı kartlar anında render edilir) */}
+          {mode === 'cross' && crossResults && (
             <CrossResultsView
               queryCode={currentCrossCode}
               searchResponse={crossResults}
