@@ -26,6 +26,39 @@ function normalizeCode(s) {
     .toUpperCase();
 }
 
+const BRAND_PRIORITY = [
+  "FLEETGUARD",
+  "DONALDSON",
+  "MANN-FILTER",
+  "FİL FİLTRE",
+  "MAHLE",
+  "HiFi",
+  "BALDWIN",
+  "SF-FILTER",
+  "HENGST",
+  "ASAŞ",
+  "ŞAMPİYON",
+  "SCTURBO",
+  "FİLMAR",
+  "MICRONIC",
+  "FERRA",
+  "MYER",
+  "PARKER",
+  "CATERPILLAR",
+  "VOLVO",
+  "SCANIA",
+  "KOMATSU",
+  "PERKINS",
+  "AUTOTECHNIK",
+  "BAVARIA"
+];
+
+function getBrandPriorityIndex(brand) {
+  const norm = String(brand || '').trim().toUpperCase();
+  const idx = BRAND_PRIORITY.findIndex((b) => b.toUpperCase() === norm || norm.includes(b.toUpperCase()) || b.toUpperCase().includes(norm));
+  return idx !== -1 ? idx : 999;
+}
+
 /**
  * CrossResultsView Component
  * (Single Responsibility: Çapraz arama sonuçlarını, kaynak raporlama bannerını,
@@ -42,14 +75,26 @@ export function CrossResultsView({
   const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'matrix'
   const [dualFilter, setDualFilter] = useState('ALL'); // 'ALL' | 'MUTUAL' | 'ONLY_A' | 'ONLY_B'
   const [copiedJson, setCopiedJson] = useState(false);
-  const [copiedCsv, setCopiedCsv] = useState(false);
+  const [copiedAllCsv, setCopiedAllCsv] = useState(false);
+  const [copiedLineIdx, setCopiedLineIdx] = useState(null);
 
   // Geriye dönük uyumluluk: response doğrudan dizi veya { results, sources } objesi olabilir
-  const results = !searchResponse
+  const rawResults = !searchResponse
     ? []
     : Array.isArray(searchResponse)
     ? searchResponse
     : searchResponse.results || [];
+
+  // Sonuçları kesin marka önceliğine göre sırala: FLEETGUARD, DONALDSON, MANN, FIL, MAHLE, HiFi...
+  const results = useMemo(() => {
+    return [...rawResults].sort((a, b) => {
+      const pA = getBrandPriorityIndex(a['Üretici Adı']);
+      const pB = getBrandPriorityIndex(b['Üretici Adı']);
+      if (pA !== pB) return pA - pB;
+      return (a['Üretici Adı'] || '').localeCompare(b['Üretici Adı'] || '');
+    });
+  }, [rawResults]);
+
   const sources = searchResponse?.sources || [];
   const totalBrands = searchResponse?.totalBrands || results.length;
   const totalOems =
@@ -75,6 +120,54 @@ export function CrossResultsView({
     });
     return map;
   }, [sources]);
+
+  // Marka öncelik sırasına göre tüm tekil OEM kodlarını topla
+  const orderedUniqueOems = useMemo(() => {
+    const list = [];
+    const seen = new Set();
+
+    results.forEach((item) => {
+      (item.Oems || []).forEach((rawOem) => {
+        const code = String(rawOem || '').replace(/\s+/g, '').trim();
+        if (code && !seen.has(code)) {
+          seen.add(code);
+          list.push(code);
+        }
+      });
+    });
+
+    return list;
+  }, [results]);
+
+  // 45-50 karakterlik satırlara bölme (Kodlar asla bölünmez/kesilmez)
+  const csvLines = useMemo(() => {
+    if (orderedUniqueOems.length === 0) return [];
+
+    const lines = [];
+    let currentChunk = [];
+    let currentLen = 0;
+    const MAX_LINE_LEN = 50;
+
+    for (const code of orderedUniqueOems) {
+      const addedLen = currentChunk.length === 0 ? code.length : code.length + 1;
+
+      if (currentLen + addedLen <= MAX_LINE_LEN || currentChunk.length === 0) {
+        currentChunk.push(code);
+        currentLen += addedLen;
+      } else {
+        // 50 karakteri aşıyor -> mevcut satırı tamamla ve bu kodu yeni satıra aktar
+        lines.push(currentChunk.join(','));
+        currentChunk = [code];
+        currentLen = code.length;
+      }
+    }
+
+    if (currentChunk.length > 0) {
+      lines.push(currentChunk.join(','));
+    }
+
+    return lines;
+  }, [orderedUniqueOems]);
 
   if (!searchResponse) return null;
 
@@ -104,30 +197,24 @@ export function CrossResultsView({
     return { score: 55, stars: 1, confirmed, badge: 'bg-slate-100 text-slate-700 border-slate-200' };
   };
 
-  // Tüm OEM kodlarının içindeki tüm boşlukları kaldırıp tekilleştiren liste
-  const getAllUniqueOems = () => {
-    const allOems = results.flatMap((item) => item.Oems || []);
-    const noSpacesList = allOems
-      .map((oem) => String(oem).replace(/\s+/g, ''))
-      .filter(Boolean);
-    return [...new Set(noSpacesList)];
-  };
-
   const handleCopyJson = () => {
     navigator.clipboard.writeText(JSON.stringify(results, null, 2));
     setCopiedJson(true);
     setTimeout(() => setCopiedJson(false), 2000);
   };
 
-  const handleCopyCsv = () => {
-    const oems = getAllUniqueOems();
-    const csvString = oems.join(',');
-    navigator.clipboard.writeText(csvString);
-    setCopiedCsv(true);
-    setTimeout(() => setCopiedCsv(false), 2000);
+  const handleCopyAllCsv = () => {
+    const fullCsv = csvLines.join('\n');
+    navigator.clipboard.writeText(fullCsv);
+    setCopiedAllCsv(true);
+    setTimeout(() => setCopiedAllCsv(false), 2000);
   };
 
-  const uniqueOems = getAllUniqueOems();
+  const handleCopySingleLine = (lineText, index) => {
+    navigator.clipboard.writeText(lineText);
+    setCopiedLineIdx(index);
+    setTimeout(() => setCopiedLineIdx(null), 2000);
+  };
 
   return (
     <div className="space-y-6">
@@ -195,8 +282,8 @@ export function CrossResultsView({
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
               {searchResponse?.isDual
-                ? `${totalBrands} üretici markada toplam ${totalOems} muadil kesiştirildi.`
-                : `${totalBrands} üretici markada toplam ${totalOems} muadil parça kodu listeleniyor.`}
+                ? `${totalBrands} üretici markada toplam ${totalOems} muadil kesiştirildi (Öncelik: FLEETGUARD, DONALDSON, MANN, FIL, MAHLE, HiFi...).`
+                : `${totalBrands} üretici markada toplam ${totalOems} muadil kod listeleniyor (Öncelik: FLEETGUARD, DONALDSON, MANN, FIL, MAHLE, HiFi...).`}
             </p>
           </div>
 
@@ -227,23 +314,24 @@ export function CrossResultsView({
               </button>
             </div>
 
-            {/* CSV ve JSON Dışa Aktarma Butonları */}
+            {/* Tümünü CSV Kopyala Butonu */}
             <button
-              onClick={handleCopyCsv}
+              onClick={handleCopyAllCsv}
               className="flex items-center gap-1 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold transition-all shadow-2xs"
-              title="Tüm boşluksuz OEM kodlarını tek satır CSV olarak kopyalar"
+              title="Tüm satırları kopyalar"
             >
-              {copiedCsv ? (
+              {copiedAllCsv ? (
                 <>
-                  <Check className="w-3.5 h-3.5" /> Kopyalandı!
+                  <Check className="w-3.5 h-3.5" /> CSV Kopyalandı!
                 </>
               ) : (
                 <>
-                  <FileSpreadsheet className="w-3.5 h-3.5" /> CSV Kopyala
+                  <FileSpreadsheet className="w-3.5 h-3.5" /> Tüm CSV'yi Kopyala
                 </>
               )}
             </button>
 
+            {/* JSON Kopyala Butonu */}
             <button
               onClick={handleCopyJson}
               className="flex items-center gap-1 px-3 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-2xs"
@@ -261,20 +349,65 @@ export function CrossResultsView({
           </div>
         </div>
 
-        {/* CSV Önizleme Şeridi */}
-        {uniqueOems.length > 0 && (
-          <div className="bg-slate-100/80 border border-slate-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono">
-            <div className="flex items-center gap-2 overflow-hidden">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200 flex-shrink-0">
-                CSV Formatı
-              </span>
-              <span className="text-slate-700 truncate select-all">
-                {uniqueOems.join(',')}
+        {/* Çok Satırlı 45-50 Karakterlik CSV Bölümleri (Ayrı Ayrı Kopyalanabilir) */}
+        {csvLines.length > 0 && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-extrabold text-slate-800">
+                  CSV Çıktı Satırları (Maks 50 Karakter - Kod Bölünmez)
+                </span>
+                <span className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">
+                  Öncelik: FLEETGUARD → DONALDSON → MANN → FIL → MAHLE → HiFi
+                </span>
+              </div>
+              <span className="text-[11px] font-mono text-slate-400 font-bold">
+                {orderedUniqueOems.length} tekil kod • {csvLines.length} satır
               </span>
             </div>
-            <span className="text-[11px] font-bold text-slate-400 flex-shrink-0">
-              {uniqueOems.length} tekil kod
-            </span>
+
+            <div className="space-y-2">
+              {csvLines.map((line, idx) => (
+                <div
+                  key={idx}
+                  className="bg-slate-50 hover:bg-blue-50/40 border border-slate-200 rounded-xl p-2.5 px-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono transition-colors"
+                >
+                  <div className="flex items-center gap-2 overflow-hidden flex-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200 flex-shrink-0">
+                      Satır {idx + 1}
+                    </span>
+                    <span className="text-slate-800 font-bold truncate select-all">
+                      {line}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-auto">
+                    <span className="text-[11px] text-slate-400 font-sans font-medium">
+                      {line.length} karakter
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopySingleLine(line, idx)}
+                      className={`px-3 py-1 rounded-lg text-xs font-sans font-bold flex items-center gap-1 transition-all ${
+                        copiedLineIdx === idx
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-white hover:bg-blue-600 hover:text-white border border-slate-200 text-slate-700 shadow-2xs'
+                      }`}
+                    >
+                      {copiedLineIdx === idx ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" /> Kopyalandı!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" /> Satır {idx + 1}'i Kopyala
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

@@ -1,4 +1,11 @@
 const { isExactCodeMatch, normalizeCode, normalizeBrand } = require('../utils/filterNormalizer');
+const { BRAND_PRIORITY } = require('../config/constants');
+
+function getBrandPriorityIndex(brand) {
+  const norm = String(brand || '').trim().toUpperCase();
+  const idx = BRAND_PRIORITY.findIndex((b) => b.toUpperCase() === norm || norm.includes(b.toUpperCase()) || b.toUpperCase().includes(norm));
+  return idx !== -1 ? idx : 999;
+}
 
 /**
  * DualCrossVerificationService
@@ -171,6 +178,23 @@ class DualCrossVerificationService {
         });
       }
     }
+
+    // Marka önceliğine göre sırala (FLEETGUARD, DONALDSON, MANN, FIL, MAHLE, HiFi...)
+    aggregatedResults.sort((a, b) => {
+      const pA = getBrandPriorityIndex(a['Üretici Adı']);
+      const pB = getBrandPriorityIndex(b['Üretici Adı']);
+      if (pA !== pB) return pA - pB;
+      return a['Üretici Adı'].localeCompare(b['Üretici Adı']);
+    });
+
+    unifiedRows.sort((a, b) => {
+      // Önce mutual (ortak), sonra marka önceliği
+      if (a.isMutual !== b.isMutual) return b.isMutual ? 1 : -1;
+      const pA = getBrandPriorityIndex(a.brand);
+      const pB = getBrandPriorityIndex(b.brand);
+      if (pA !== pB) return pA - pB;
+      return b.score - a.score || a.brand.localeCompare(b.brand);
+    });
 
     // Birleşik Kaynak Durumları
     const mergedSourcesMap = new Map();

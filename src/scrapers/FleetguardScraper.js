@@ -31,6 +31,18 @@ class FleetguardScraper extends BaseScraper {
         await page.waitForTimeout(4500);
 
         const fleetguardCodes = await page.evaluate(() => {
+          const fullText = document.body.innerText || '';
+          const isNoExactMatch = 
+            /didn’t find an exact match/i.test(fullText) || 
+            /didn't find an exact match/i.test(fullText) || 
+            /no results found/i.test(fullText) ||
+            /Parts\s*\(0\)/i.test(fullText);
+
+          // Eğer birebir eşleşme yoksa veya 'Parts (0)' ise Related Results altındaki alakasız ürünleri alma
+          if (isNoExactMatch) {
+            return [];
+          }
+
           function findRoots(node) {
             let roots = [node];
             const walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT);
