@@ -5,16 +5,14 @@ import {
   AlertCircle,
   XCircle,
   Loader2,
-  Clock,
-  Database,
-  Sparkles
+  Clock
 } from 'lucide-react';
 
 /**
  * ScrapingProgressBar Component
  * 
  * Tarama esnasında canlı ilerleme çubuğu, anlık taranan üretici bilgisi
- * ve her bir sitenin tamamlanma durumunu (Bulundu / Kayıt Yok / Hata) gerçek zamanlı gösterir.
+ * ve her bir sitenin tamamlanma durumunu (Bulundu / Kayıt Yok / Hata + Hata mesajı) gerçek zamanlı gösterir.
  */
 export function ScrapingProgressBar({ progressState, queryCode }) {
   if (!progressState || !progressState.active) return null;
@@ -23,8 +21,7 @@ export function ScrapingProgressBar({ progressState, queryCode }) {
     totalScrapers = 10,
     completedCount = 0,
     currentScraper = '',
-    sources = {},
-    logs = []
+    sources = {}
   } = progressState;
 
   const percent = Math.min(100, Math.round((completedCount / (totalScrapers || 1)) * 100));
@@ -33,6 +30,7 @@ export function ScrapingProgressBar({ progressState, queryCode }) {
   const sourceList = Object.values(sources);
   const successCount = sourceList.filter((s) => s.status === 'success').length;
   const emptyCount = sourceList.filter((s) => s.status === 'empty').length;
+  const errorCount = sourceList.filter((s) => s.status === 'error').length;
   const totalOemsFound = sourceList.reduce((sum, s) => sum + (s.foundCount || 0), 0);
 
   return (
@@ -65,6 +63,11 @@ export function ScrapingProgressBar({ progressState, queryCode }) {
           <span className="flex items-center gap-1 text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
             <AlertCircle className="w-3.5 h-3.5" /> {emptyCount} Yok
           </span>
+          {errorCount > 0 && (
+            <span className="flex items-center gap-1 text-red-700 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200">
+              <XCircle className="w-3.5 h-3.5" /> {errorCount} Hata
+            </span>
+          )}
         </div>
       </div>
 
@@ -75,7 +78,6 @@ export function ScrapingProgressBar({ progressState, queryCode }) {
             className="bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-500 h-full rounded-full transition-all duration-500 ease-out shadow-xs relative overflow-hidden"
             style={{ width: `${Math.max(5, percent)}%` }}
           >
-            {/* Parıltı animasyonu */}
             <div className="absolute inset-0 bg-white/25 animate-pulse"></div>
           </div>
         </div>
@@ -110,7 +112,7 @@ export function ScrapingProgressBar({ progressState, queryCode }) {
           } else if (isSuccess) {
             cardStyle = 'bg-emerald-50/80 border-emerald-200 text-emerald-900';
           } else if (isError) {
-            cardStyle = 'bg-red-50/80 border-red-200 text-red-900';
+            cardStyle = 'bg-red-50/90 border-red-300 text-red-900';
           } else if (isDone) {
             cardStyle = 'bg-slate-100/70 border-slate-200 text-slate-600';
           }
@@ -118,48 +120,56 @@ export function ScrapingProgressBar({ progressState, queryCode }) {
           return (
             <div
               key={idx}
-              className={`p-2.5 rounded-xl border text-xs font-medium transition-all flex items-center justify-between gap-2 ${cardStyle}`}
+              className={`p-2.5 rounded-xl border text-xs font-medium transition-all flex flex-col justify-between gap-1.5 ${cardStyle}`}
             >
-              <div className="flex items-center gap-2 min-w-0">
-                {isRunning ? (
-                  <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin flex-shrink-0" />
-                ) : isSuccess ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                ) : isError ? (
-                  <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
-                ) : isDone ? (
-                  <AlertCircle className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                ) : (
-                  <Clock className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
-                )}
-                <span className="font-bold truncate text-[11px]">
-                  {src.name}
-                </span>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  {isRunning ? (
+                    <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin flex-shrink-0" />
+                  ) : isSuccess ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                  ) : isError ? (
+                    <XCircle className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />
+                  ) : isDone ? (
+                    <AlertCircle className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                  ) : (
+                    <Clock className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
+                  )}
+                  <span className="font-bold truncate text-[11px]">
+                    {src.name}
+                  </span>
+                </div>
+
+                <div className="flex-shrink-0">
+                  {isRunning ? (
+                    <span className="text-[10px] font-bold text-blue-700 bg-blue-100/80 px-1.5 py-0.2 rounded animate-pulse">
+                      Taranıyor
+                    </span>
+                  ) : isSuccess ? (
+                    <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded">
+                      {src.foundCount} OEM
+                    </span>
+                  ) : isError ? (
+                    <span className="text-[10px] font-bold text-red-700 bg-red-100 px-1.5 py-0.2 rounded">
+                      Hata
+                    </span>
+                  ) : isDone ? (
+                    <span className="text-[10px] font-medium text-slate-500 bg-slate-200/60 px-1.5 py-0.2 rounded">
+                      Kayıt Yok
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-400">
+                      Bekliyor
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <div className="flex-shrink-0">
-                {isRunning ? (
-                  <span className="text-[10px] font-bold text-blue-700 bg-blue-100/80 px-1.5 py-0.2 rounded animate-pulse">
-                    Taranıyor
-                  </span>
-                ) : isSuccess ? (
-                  <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded">
-                    {src.foundCount} OEM
-                  </span>
-                ) : isError ? (
-                  <span className="text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.2 rounded">
-                    Hata
-                  </span>
-                ) : isDone ? (
-                  <span className="text-[10px] font-medium text-slate-500 bg-slate-200/60 px-1.5 py-0.2 rounded">
-                    Kayıt Yok
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-slate-400">
-                    Bekliyor
-                  </span>
-                )}
-              </div>
+              {isError && src.error && (
+                <div className="text-[10px] text-red-700 bg-red-100/70 px-1.5 py-0.5 rounded truncate" title={src.error}>
+                  ⚠️ {src.error}
+                </div>
+              )}
             </div>
           );
         })}

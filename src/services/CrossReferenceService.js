@@ -148,7 +148,12 @@ class CrossReferenceService {
         });
         const context = await browser.newContext({
           ignoreHTTPSErrors: true,
-          userAgent: USER_AGENT
+          userAgent: USER_AGENT,
+          extraHTTPHeaders: {
+            'sec-ch-ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"macOS"'
+          }
         });
         await context.addInitScript(() => {
           Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -296,7 +301,12 @@ class CrossReferenceService {
         });
         const context = await browser.newContext({
           ignoreHTTPSErrors: true,
-          userAgent: USER_AGENT
+          userAgent: USER_AGENT,
+          extraHTTPHeaders: {
+            'sec-ch-ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"macOS"'
+          }
         });
         await context.addInitScript(() => {
           Object.defineProperty(navigator, 'webdriver', { get: () => undefined });

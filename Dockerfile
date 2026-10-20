@@ -1,30 +1,32 @@
-# 1. Aşama: Frontend Derleme
-FROM node:20-slim AS frontend-builder
+# syntax=docker/dockerfile:1
+# 1. Aşama: Frontend Derleme (Mac ARM64 üzerinde emülasyonsuz, yerel hızda çalışır)
+FROM --platform=$BUILDPLATFORM node:20-slim AS frontend-builder
 WORKDIR /app/client
 COPY client/package*.json ./
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 COPY client/ ./
 RUN npm run build
 
-# 2. Aşama: Backend ve Çalışma Zamanı
-FROM mcr.microsoft.com/playwright:v1.42.1-jammy
+# 2. Aşama: Backend ve Çalışma Zamanı (Sadece Chromium içeren hafif imaj)
+FROM node:20-bookworm-slim
 WORKDIR /app
 
-# Sistem bağımlılıklarını ve Node.js'i kur (mcr imajında node zaten var)
 ENV NODE_ENV=production
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Backend bağımlılıklarını kopyala ve kur
+# 1) Önce sadece package.json kopyala ve bağımlılık + Chromium kur
+# Hem Docker Layer Cache hem de BuildKit npm/apt önbelleği kullanılır.
 COPY package*.json ./
-RUN npm install --production
+RUN --mount=type=cache,target=/root/.npm \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    npm ci --omit=dev && \
+    npx playwright install --with-deps chromium
 
-# Uygulama dosyalarını kopyala
+# 2) Uygulama kodlarını ve frontend çıktısını en son kopyala (Hızlı katman)
 COPY . .
-
-# Frontend derlemesini kopyala
 COPY --from=frontend-builder /app/client/dist ./client/dist
-
-# Playwright tarayıcılarını kur (scraper için gerekli)
-RUN npx playwright install chromium
 
 # Uygulama portları (Backend: 4002)
 EXPOSE 4002

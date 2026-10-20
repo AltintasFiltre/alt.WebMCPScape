@@ -1,5 +1,5 @@
 const { BaseScraper } = require('./BaseScraper');
-const { isExactCodeMatch, isValidCode } = require('../utils/filterNormalizer');
+const { getCodeVariations, isExactCodeMatch, isValidCode, normalizeBrand } = require('../utils/filterNormalizer');
 const { USER_AGENT } = require('../config/constants');
 
 class SfFilterScraper extends BaseScraper {
@@ -8,20 +8,29 @@ class SfFilterScraper extends BaseScraper {
   }
 
   async search(code) {
-    try {
-      const url = "https://www.sf-filter.com/api/search/serp/result?filter=filters&limit=50&offset=0&query=" + encodeURIComponent(code.trim());
+    const variations = getCodeVariations(code);
+    const sfCodes = [];
+    const crossResults = [];
+    const seenKeys = new Set();
+    let successResponses = 0;
+    let lastHttpError = null;
+
+    for (const q of variations) {
+      const url = `https://www.sf-filter.com/api/search/serp/result?filter=products&limit=50&offset=0&query=${encodeURIComponent(q)}`;
       const res = await fetch(url, {
         headers: {
           "User-Agent": USER_AGENT,
           "Accept": "application/json"
         }
       });
-      if (!res.ok) return [];
+      if (!res.ok) {
+        lastHttpError = `HTTP ${res.status} (${res.statusText || 'API Hatası'})`;
+        continue;
+      }
+
+      successResponses++;
       const data = await res.json();
       const items = Array.isArray(data?.payload) ? data.payload : [];
-
-      const sfCodes = [];
-      const crossResults = [];
 
       for (const item of items) {
         const sfNumber = item.number || item.item?.title;
@@ -36,21 +45,27 @@ class SfFilterScraper extends BaseScraper {
             sfCodes.push(sfNumber);
           }
           if (origNumber && isValidCode(origNumber) && origBrand) {
-            crossResults.push({ "Üretici Adı": origBrand, "Oems": [origNumber] });
+            const normBrand = normalizeBrand(origBrand) || origBrand;
+            const key = `${normBrand}_${origNumber}`;
+            if (!seenKeys.has(key)) {
+              seenKeys.add(key);
+              crossResults.push({ "Üretici Adı": normBrand, "Oems": [origNumber] });
+            }
           }
         }
       }
-
-      const results = [];
-      if (sfCodes.length > 0) {
-        results.push({ "Üretici Adı": "SF-FILTER", "Oems": [...new Set(sfCodes)] });
-      }
-      results.push(...crossResults);
-      return results;
-    } catch (err) {
-      console.error("SF-Filter search error:", err.message);
-      return [];
     }
+
+    if (successResponses === 0 && lastHttpError) {
+      throw new Error(`SF-Filter API hatası: ${lastHttpError}`);
+    }
+
+    const results = [];
+    if (sfCodes.length > 0) {
+      results.push({ "Üretici Adı": "SF-FILTER", "Oems": [...new Set(sfCodes)] });
+    }
+    results.push(...crossResults);
+    return results;
   }
 }
 
